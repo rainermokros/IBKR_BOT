@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "v6-trading-system"
+version = "0.1.0"
+description = "Next-generation automated options trading system with advanced automation and comprehensive risk management"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "PROPRIETARY"}
+authors = [
+    {name = "Trading System Team"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: Other/Proprietary",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "deltalake>=0.20.0",
+    "ib_async>=0.1.0",
+    "pydantic>=2.0.0",
+    "polars>=0.20.0",
+    "py_vollib_vectorized>=0.1.0",
+    "python-dotenv>=1.0.0",
+    "loguru>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.8.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/v6"]
