@@ -23,7 +23,7 @@ import polars as pl
 from deltalake import DeltaTable
 from loguru import logger
 
-from v6.data.position_streamer import IBPositionStreamer
+from src.v6.data.position_streamer import IBPositionStreamer
 
 
 class DiscrepancyType(str, Enum):

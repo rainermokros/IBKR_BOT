@@ -8,8 +8,8 @@ import asyncio
 
 from loguru import logger
 
-from v6.data.position_streamer import IBPositionStreamer
-from v6.data.reconciliation import PositionReconciler, ReconciliationService
+from src.v6.data.position_streamer import IBPositionStreamer
+from src.v6.data.reconciliation import PositionReconciler, ReconciliationService
 
 
 async def main():

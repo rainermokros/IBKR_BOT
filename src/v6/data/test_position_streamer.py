@@ -10,9 +10,9 @@ import asyncio
 
 from loguru import logger
 
-from v6.data.position_queue import PositionQueue
-from v6.data.position_streamer import IBPositionStreamer, PositionUpdate, PositionUpdateHandler
-from v6.data.strategy_registry import StrategyRegistry
+from src.v6.data.position_queue import PositionQueue
+from src.v6.data.position_streamer import IBPositionStreamer, PositionUpdate, PositionUpdateHandler
+from src.v6.data.strategy_registry import StrategyRegistry
 
 
 class TestHandler(PositionUpdateHandler):

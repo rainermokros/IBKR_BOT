@@ -8,8 +8,8 @@ import asyncio
 
 from loguru import logger
 
-from v6.data.position_queue import PositionQueue
-from v6.data.queue_worker import QueueWorker
+from src.v6.data.position_queue import PositionQueue
+from src.v6.data.queue_worker import QueueWorker
 
 
 async def main():

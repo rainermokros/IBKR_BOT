@@ -20,6 +20,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+import polars as pl
+from loguru import logger
+
+from src.v6.data.repositories.positions import PositionsRepository
+
 
 @dataclass(slots=True)
 class PortfolioGreeks:
@@ -239,3 +244,322 @@ class PortfolioRisk:
             f"delta={self.greeks.delta:.4f}, exposure=${self.exposure.total_exposure:,.0f}, "
             f"margin_used={self.exposure.buying_power_used:.1%})"
         )
+
+
+class PortfolioRiskCalculator:
+    """
+    Calculator for portfolio-level risk metrics.
+
+    Aggregates Greeks and exposure metrics across all positions to support
+    decision rules that need portfolio context (delta risk limits, gamma exposure,
+    concentration checks).
+
+    Attributes:
+        position_repo: Repository for accessing position data
+
+    Example:
+        >>> calc = PortfolioRiskCalculator(PositionRepository())
+        >>> risk = await calc.calculate_portfolio_risk()
+        >>> print(risk.greeks.delta)
+        0.5
+    """
+
+    def __init__(self, position_repo: PositionsRepository):
+        """
+        Initialize the portfolio risk calculator.
+
+        Args:
+            position_repo: Repository for accessing position data
+        """
+        self.position_repo = position_repo
+
+    async def calculate_portfolio_risk(self, account_id: Optional[int] = None) -> PortfolioRisk:
+        """
+        Calculate comprehensive portfolio risk metrics.
+
+        Aggregates Greeks across all positions, calculates exposure metrics,
+        and returns complete portfolio risk assessment.
+
+        Args:
+            account_id: Optional account ID filter (for multi-account support)
+
+        Returns:
+            PortfolioRisk with aggregated Greeks, exposure, and counts
+
+        Note:
+            Uses Polars for efficient aggregation when >10 positions.
+            Falls back to simple aggregation for small portfolios.
+        """
+        # Fetch all open positions
+        df = self.position_repo.get_open_positions()
+
+        # Handle empty portfolio
+        if df.is_empty():
+            return PortfolioRisk(
+                greeks=PortfolioGreeks(
+                    delta=0.0,
+                    gamma=0.0,
+                    theta=0.0,
+                    vega=0.0,
+                    delta_per_symbol={},
+                    gamma_per_symbol={},
+                ),
+                exposure=ExposureMetrics(
+                    total_exposure=0.0,
+                    max_single_position=0.0,
+                    correlated_exposure={},
+                    buying_power_used=0.0,
+                    buying_power_available=0.0,
+                ),
+                position_count=0,
+                symbol_count=0,
+                calculated_at=datetime.now(),
+            )
+
+        # Use Polars for aggregation
+        position_count = df.shape[0]
+
+        # Aggregate Greeks across all positions
+        # Note: df should have delta, gamma, theta, vega columns
+        total_delta = df["delta"].sum()
+        total_gamma = df["gamma"].sum()
+        total_theta = df["theta"].sum()
+        total_vega = df["vega"].sum()
+
+        # Per-symbol Greek aggregation
+        try:
+            symbol_greeks = df.groupby("symbol").agg(
+                [
+                    pl.col("delta").sum().alias("delta"),
+                    pl.col("gamma").sum().alias("gamma"),
+                ]
+            )
+
+            delta_per_symbol = dict(zip(
+                symbol_greeks["symbol"].to_list(),
+                symbol_greeks["delta"].to_list()
+            ))
+            gamma_per_symbol = dict(zip(
+                symbol_greeks["symbol"].to_list(),
+                symbol_greeks["gamma"].to_list()
+            ))
+        except (AttributeError, KeyError) as e:
+            logger.warning(f"Could not aggregate by symbol: {e}")
+            delta_per_symbol = {}
+            gamma_per_symbol = {}
+
+        # Calculate exposure metrics
+        try:
+            # Position value: quantity * strike * 100 (multiplier)
+            if "strike" in df.columns and "quantity" in df.columns:
+                df_with_value = df.with_columns(
+                    (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
+                )
+                total_exposure = df_with_value["position_value"].sum()
+
+                # Max single position as percentage
+                if total_exposure > 0:
+                    max_position_value = df_with_value["position_value"].max()
+                    max_single_position = max_position_value / total_exposure
+                else:
+                    max_single_position = 0.0
+            else:
+                # Fallback: use entry_price * quantity
+                if "entry_price" in df.columns and "quantity" in df.columns:
+                    df_with_value = df.with_columns(
+                        (pl.col("entry_price") * pl.col("quantity").abs() * 100).alias("position_value")
+                    )
+                    total_exposure = df_with_value["position_value"].sum()
+
+                    if total_exposure > 0:
+                        max_position_value = df_with_value["position_value"].max()
+                        max_single_position = max_position_value / total_exposure
+                    else:
+                        max_single_position = 0.0
+                else:
+                    total_exposure = 0.0
+                    max_single_position = 0.0
+        except Exception as e:
+            logger.warning(f"Could not calculate exposure metrics: {e}")
+            total_exposure = 0.0
+            max_single_position = 0.0
+
+        # Correlated exposure (by symbol as proxy for sector)
+        # TODO: Add sector mapping when available
+        try:
+            if "strike" in df.columns and "quantity" in df.columns:
+                df_with_value = df.with_columns(
+                    (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
+                )
+                symbol_exposure = df_with_value.groupby("symbol").agg(
+                    pl.col("position_value").sum().alias("exposure")
+                )
+                if total_exposure > 0:
+                    correlated_exposure = {
+                        symbol: (exp / total_exposure)
+                        for symbol, exp in zip(
+                            symbol_exposure["symbol"].to_list(),
+                            symbol_exposure["exposure"].to_list()
+                        )
+                    }
+                else:
+                    correlated_exposure = {}
+            else:
+                correlated_exposure = {}
+        except Exception as e:
+            logger.warning(f"Could not calculate correlated exposure: {e}")
+            correlated_exposure = {}
+
+        # Buying power (TODO: Integrate with IB account data)
+        # For now, set defaults
+        buying_power_used = 0.0
+        buying_power_available = 0.0
+
+        # Symbol count
+        try:
+            symbol_count = df["symbol"].n_unique()
+        except (AttributeError, KeyError):
+            symbol_count = 0
+
+        return PortfolioRisk(
+            greeks=PortfolioGreeks(
+                delta=total_delta,
+                gamma=total_gamma,
+                theta=total_theta,
+                vega=total_vega,
+                delta_per_symbol=delta_per_symbol,
+                gamma_per_symbol=gamma_per_symbol,
+            ),
+            exposure=ExposureMetrics(
+                total_exposure=total_exposure,
+                max_single_position=max_single_position,
+                correlated_exposure=correlated_exposure,
+                buying_power_used=buying_power_used,
+                buying_power_available=buying_power_available,
+            ),
+            position_count=position_count,
+            symbol_count=symbol_count,
+            calculated_at=datetime.now(),
+        )
+
+    async def get_greeks_by_symbol(self, symbol: str) -> PortfolioGreeks:
+        """
+        Calculate Greeks for a specific symbol.
+
+        Filters positions by symbol and aggregates Greeks.
+
+        Args:
+            symbol: Underlying symbol (e.g., "SPY")
+
+        Returns:
+            PortfolioGreeks with per-symbol aggregates
+        """
+        # Fetch positions for symbol
+        df = self.position_repo.get_by_symbol(symbol)
+
+        # Filter for open positions
+        if "status" in df.columns:
+            df = df.filter(pl.col("status") == "open")
+
+        # Handle no positions
+        if df.is_empty():
+            return PortfolioGreeks(
+                delta=0.0,
+                gamma=0.0,
+                theta=0.0,
+                vega=0.0,
+                delta_per_symbol={},
+                gamma_per_symbol={},
+            )
+
+        # Aggregate Greeks
+        delta = df["delta"].sum()
+        gamma = df["gamma"].sum()
+        theta = df["theta"].sum()
+        vega = df["vega"].sum()
+
+        return PortfolioGreeks(
+            delta=delta,
+            gamma=gamma,
+            theta=theta,
+            vega=vega,
+            delta_per_symbol={symbol: delta},
+            gamma_per_symbol={symbol: gamma},
+        )
+
+    async def check_delta_limits(self, max_delta: float = 0.30) -> list[str]:
+        """
+        Check which symbols exceed delta limits.
+
+        Calculates portfolio Greeks and returns list of symbols where
+        |delta_per_symbol[symbol]| > max_delta.
+
+        Args:
+            max_delta: Maximum allowed delta per symbol (default: 0.30)
+
+        Returns:
+            List of symbols exceeding delta limit
+        """
+        # Calculate portfolio risk
+        risk = await self.calculate_portfolio_risk()
+
+        # Check per-symbol deltas
+        over_limit = []
+        for symbol, delta in risk.greeks.delta_per_symbol.items():
+            if abs(delta) > max_delta:
+                over_limit.append(symbol)
+
+        return over_limit
+
+    async def check_exposure_limits(
+        self,
+        max_position_pct: float = 0.02,
+        max_correlated_pct: float = 0.05,
+    ) -> list[str]:
+        """
+        Check which symbols/sectors exceed exposure limits.
+
+        Calculates exposure metrics and returns list of symbols exceeding limits.
+
+        Args:
+            max_position_pct: Maximum single position as percentage (default: 2%)
+            max_correlated_pct: Maximum correlated exposure as percentage (default: 5%)
+
+        Returns:
+            List of symbols/sectors exceeding exposure limits
+        """
+        # Calculate portfolio risk
+        risk = await self.calculate_portfolio_risk()
+
+        over_limit = []
+
+        # Check max single position
+        # We need to identify which position is the max
+        # This requires recalculating with symbol tracking
+        df = self.position_repo.get_open_positions()
+        if not df.is_empty():
+            try:
+                if "strike" in df.columns and "quantity" in df.columns:
+                    df_with_value = df.with_columns(
+                        (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
+                    )
+                    total_exposure = df_with_value["position_value"].sum()
+                    if total_exposure > 0:
+                        max_pos = df_with_value.groupby("symbol").agg(
+                            pl.col("position_value").sum().alias("exposure")
+                        )
+                        for symbol, exposure in zip(
+                            max_pos["symbol"].to_list(),
+                            max_pos["exposure"].to_list()
+                        ):
+                            if (exposure / total_exposure) > max_position_pct:
+                                over_limit.append(symbol)
+            except Exception as e:
+                logger.warning(f"Could not check position limits: {e}")
+
+        # Check correlated exposure
+        for sector, exposure_pct in risk.exposure.correlated_exposure.items():
+            if exposure_pct > max_correlated_pct:
+                over_limit.append(f"sector:{sector}")
+
+        return over_limit

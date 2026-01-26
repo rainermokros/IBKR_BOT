@@ -15,8 +15,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from v6.data.delta_persistence import DeltaLakePositionWriter, PositionUpdatesTable
-from v6.data.position_streamer import PositionUpdate
+from src.v6.data.delta_persistence import DeltaLakePositionWriter, PositionUpdatesTable
+from src.v6.data.position_streamer import PositionUpdate
 
 
 async def main():

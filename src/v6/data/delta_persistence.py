@@ -20,7 +20,7 @@ import polars as pl
 from deltalake import DeltaTable, write_deltalake
 from loguru import logger
 
-from v6.data.position_streamer import PositionUpdate, PositionUpdateHandler
+from src.v6.data.position_streamer import PositionUpdate, PositionUpdateHandler
 
 
 class PositionUpdatesTable:

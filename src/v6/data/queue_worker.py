@@ -16,8 +16,8 @@ from typing import List, Optional
 import polars as pl
 from loguru import logger
 
-from v6.data.position_queue import PositionQueue, QueueStatus
-from v6.utils.ib_connection import IBConnectionManager
+from src.v6.data.position_queue import PositionQueue, QueueStatus
+from src.v6.utils.ib_connection import IBConnectionManager
 
 
 @dataclass(slots=True)

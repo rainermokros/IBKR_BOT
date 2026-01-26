@@ -18,9 +18,9 @@ from typing import List, Optional, Protocol, runtime_checkable
 
 from loguru import logger
 
-from v6.data.position_queue import PositionQueue
-from v6.data.strategy_registry import StrategyRegistry
-from v6.utils.ib_connection import IBConnectionManager
+from src.v6.data.position_queue import PositionQueue
+from src.v6.data.strategy_registry import StrategyRegistry
+from src.v6.utils.ib_connection import IBConnectionManager
 
 
 @dataclass(slots=True)
