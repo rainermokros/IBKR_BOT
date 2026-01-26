@@ -1,69 +1,85 @@
 """
-Integration test script for IB position streaming.
+Integration test for hybrid position synchronization.
 
-This script tests the position streaming functionality with a real IB connection.
-Requires IB Gateway or TWS to be running.
-
-Usage:
-    python src/v6/data/test_position_streamer.py
+Tests IBPositionStreamer with hybrid approach:
+- Active contracts: streamed (real-time)
+- Non-essential contracts: queued (batch processing)
 """
 
 import asyncio
-
 from loguru import logger
 
-from v6.data import IBPositionStreamer, PositionUpdate, PositionUpdateHandler
+from v6.data.position_streamer import IBPositionStreamer, PositionUpdateHandler, PositionUpdate
+from v6.data.strategy_registry import StrategyRegistry
+from v6.data.position_queue import PositionQueue
 
 
 class TestHandler(PositionUpdateHandler):
-    """Test handler that logs position updates."""
+    """Test handler that logs position updates (streamed only)."""
+
+    def __init__(self):
+        self.updates_received = []
 
     async def on_position_update(self, update: PositionUpdate) -> None:
-        """Handle position update by logging it."""
-        logger.info(
-            f"Position update: {update.symbol} {update.right} {update.strike} "
-            f"Exp: {update.expiry} Pos: {update.position} "
-            f"Price: ${update.market_price:.2f} P&L: ${update.unrealized_pnl:.2f}"
-        )
+        logger.info(f"📡 STREAMED UPDATE: {update.symbol} {update.right} (conid: {update.conid}, pos: {update.position})")
+        self.updates_received.append(update)
 
 
 async def main():
-    """Test position streaming."""
-    logger.info("Starting position streaming test...")
+    """Test hybrid position synchronization."""
+    logger.info("Testing hybrid position synchronization...")
 
-    # Get singleton instance
-    streamer = IBPositionStreamer()
+    # Create registry and queue
+    registry = StrategyRegistry(delta_lake_path="data/lake/test_active_strategies")
+    queue = PositionQueue(delta_lake_path="data/lake/test_position_queue")
 
-    # Register test handler
+    # Initialize
+    await registry.initialize()
+    await queue.initialize()
+
+    # Add one active contract (should be streamed)
+    await registry.add_active(
+        conid=999999,
+        symbol="TEST",
+        right="CALL",
+        strike=450.0,
+        expiry="20260220",
+        strategy_id=1
+    )
+    logger.info("✓ Added active contract 999999 (should be streamed)")
+
+    # Create streamer with registry and queue
+    streamer = IBPositionStreamer(registry=registry, queue=queue)
+
+    # Create handler to catch streamed updates
     handler = TestHandler()
     streamer.register_handler(handler)
-    logger.info(f"Registered handler: {handler.__class__.__name__}")
 
-    # Start streaming (requires IB Gateway/TWS running)
     try:
-        logger.info("Connecting to IB...")
+        # Start hybrid sync
         await streamer.start()
+        logger.info("✓ Hybrid position sync started")
 
-        # Stream for 30 seconds
-        logger.info("Streaming for 30 seconds...")
-        logger.info("Note: You should see position updates if you have open option positions")
-        await asyncio.sleep(30)
+        # Wait for updates
+        await asyncio.sleep(5)
 
-        # Stop streaming
+        # Stop
         await streamer.stop()
+        logger.info("✓ Hybrid position sync stopped")
 
-        logger.info("✓ Test complete - position streaming works")
+        # Verify results
+        logger.info(f"\n=== Results ===")
+        logger.info(f"Streamed updates received: {len(handler.updates_received)}")
 
-    except ConnectionRefusedError:
-        logger.error("Connection refused - IB Gateway/TWS is not running")
-        logger.info("Start IB Gateway or TWS and try again")
+        # Check queue
+        queued_items = await queue.get_batch(priority=2, limit=100)
+        logger.info(f"Queued items (non-essential): {len(queued_items)}")
+
+        logger.info("\n✓ Test complete")
+
     except Exception as e:
         logger.error(f"Test failed: {e}")
         logger.info("Note: This test requires IB Gateway/TWS to be running")
-    finally:
-        # Ensure cleanup
-        if streamer.is_streaming:
-            await streamer.stop()
 
 
 if __name__ == "__main__":
