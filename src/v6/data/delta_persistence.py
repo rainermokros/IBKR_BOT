@@ -13,12 +13,10 @@ Key patterns:
 """
 
 import asyncio
-from datetime import datetime
 from pathlib import Path
 from typing import List
 
 import polars as pl
-import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
 from loguru import logger
 
@@ -43,21 +41,21 @@ class PositionUpdatesTable:
         if DeltaTable.is_deltatable(str(self.table_path)):
             return
 
-        # Schema for position updates
-        schema = pa.schema([
-            ('conid', pa.int64()),
-            ('symbol', pa.string()),
-            ('right', pa.string()),
-            ('strike', pa.float64()),
-            ('expiry', pa.string()),
-            ('position', pa.float64()),
-            ('market_price', pa.float64()),
-            ('market_value', pa.float64()),
-            ('average_cost', pa.float64()),
-            ('unrealized_pnl', pa.float64()),
-            ('timestamp', pa.timestamp('us')),
-            ('date', pa.date32()),  # For partitioning (extracted from timestamp)
-        ])
+        # Schema for position updates (use Polars schema, not PyArrow)
+        schema = pl.Schema({
+            'conid': pl.Int64,
+            'symbol': pl.String,
+            'right': pl.String,
+            'strike': pl.Float64,
+            'expiry': pl.String,
+            'position': pl.Float64,
+            'market_price': pl.Float64,
+            'market_value': pl.Float64,
+            'average_cost': pl.Float64,
+            'unrealized_pnl': pl.Float64,
+            'timestamp': pl.Datetime("us"),
+            'date': pl.Date,
+        })
 
         # Create empty table
         empty_df = pl.DataFrame(schema=schema)
@@ -183,11 +181,17 @@ class DeltaLakePositionWriter(PositionUpdateHandler):
 
         df = pl.DataFrame(data)
 
-        # Use anti-join for deduplication (simpler than MERGE)
+        # First, deduplicate within the batch (keep latest timestamp per conid)
+        df_deduped = df.sort('timestamp', descending=True).unique(
+            subset=['conid'],
+            keep='first'
+        )
+
+        # Use anti-join for deduplication against existing data (simpler than MERGE)
         dt = self.table.get_table()
 
         # Read existing data for these conids
-        existing_conids = df.select('conid').to_series().to_list()
+        existing_conids = df_deduped.select('conid').to_series().to_list()
         existing_df = dt.to_pandas()
         existing_df = pl.from_pandas(existing_df).filter(
             pl.col("conid").is_in(existing_conids)
@@ -197,7 +201,7 @@ class DeltaLakePositionWriter(PositionUpdateHandler):
         # For existing conids, only keep if timestamp is newer
         if len(existing_df) > 0:
             # Join to find existing records
-            joined = df.join(
+            joined = df_deduped.join(
                 existing_df.select(['conid', 'timestamp']),
                 on='conid',
                 how='left'
@@ -212,7 +216,7 @@ class DeltaLakePositionWriter(PositionUpdateHandler):
             # Drop the join column
             new_updates = new_updates.drop('timestamp_right')
         else:
-            new_updates = df
+            new_updates = df_deduped
 
         # Append only new updates
         if len(new_updates) > 0:
