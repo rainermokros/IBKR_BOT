@@ -65,10 +65,14 @@ class IBPositionStreamer:
     """
 
     _instance: Optional['IBPositionStreamer'] = None
+    _registry: Optional[StrategyRegistry] = None
+    _queue: Optional[PositionQueue] = None
 
-    def __new__(cls):
+    def __new__(cls, registry: Optional[StrategyRegistry] = None, queue: Optional[PositionQueue] = None):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._registry = registry
+            cls._queue = queue
         return cls._instance
 
     def __init__(
@@ -132,7 +136,8 @@ class IBPositionStreamer:
         # Get IB connection
         from v6.utils.ib_connection import IBConnectionManager
         conn_manager = IBConnectionManager()
-        self._connection = await conn_manager.get_connection()
+        await conn_manager.connect()
+        self._connection = conn_manager
 
         if not self._connection or not self._connection.is_connected:
             raise ConnectionError("IB not connected")
