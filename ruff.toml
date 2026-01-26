@@ -1,4 +1,3 @@
-[target.line-length]
 line-length = 100
 
 [format]
@@ -9,5 +8,5 @@ indent-style = "space"
 select = ["E", "F", "I", "N", "W", "B"]
 ignore = ["E501"]  # Line length handled by formatter
 
-[per-file-ignores]
+[lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports OK in __init__.py
