@@ -22,13 +22,13 @@ from v6.models.ib_models import (
 )
 
 # Dataclasses for internal state management
-# from v6.models.internal_state import (
-#     CircuitState,
-#     PositionState,
-#     PortfolioState,
-#     ConnectionMetrics,
-#     SystemState,
-# )
+from v6.models.internal_state import (
+    CircuitState,
+    PositionState,
+    PortfolioState,
+    ConnectionMetrics,
+    SystemState,
+)
 
 __all__ = [
     # Pydantic models
@@ -39,10 +39,10 @@ __all__ = [
     "StrategyPosition",
     "GreeksSnapshot",
     "Trade",
-    # Dataclasses (uncommented after Task 2)
-    # "CircuitState",
-    # "PositionState",
-    # "PortfolioState",
-    # "ConnectionMetrics",
-    # "SystemState",
+    # Dataclasses
+    "CircuitState",
+    "PositionState",
+    "PortfolioState",
+    "ConnectionMetrics",
+    "SystemState",
 ]
