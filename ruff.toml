@@ -1,0 +1,13 @@
+[target.line-length]
+line-length = 100
+
+[format]
+quote-style = "double"
+indent-style = "space"
+
+[lint]
+select = ["E", "F", "I", "N", "W", "B"]
+ignore = ["E501"]  # Line length handled by formatter
+
+[per-file-ignores]
+"__init__.py" = ["F401"]  # Unused imports OK in __init__.py
