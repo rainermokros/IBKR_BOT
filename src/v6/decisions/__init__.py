@@ -10,8 +10,8 @@ Key exports:
 - Rule: Protocol for rule implementation
 """
 
-from v6.decisions.models import Decision, DecisionAction, RuleResult, Urgency
-from v6.decisions.engine import DecisionEngine, Rule
+from src.v6.decisions.engine import DecisionEngine, Rule
+from src.v6.decisions.models import Decision, DecisionAction, RuleResult, Urgency
 
 __all__ = [
     "DecisionEngine",

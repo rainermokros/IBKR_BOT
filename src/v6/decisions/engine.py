@@ -16,9 +16,10 @@ but adapted to v6 architecture (async, protocol-based).
 """
 
 from typing import Optional, Protocol, runtime_checkable
+
 from loguru import logger
 
-from v6.decisions.models import Decision, DecisionAction, Urgency
+from src.v6.decisions.models import Decision, DecisionAction, Urgency
 
 
 @runtime_checkable
