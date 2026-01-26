@@ -30,6 +30,8 @@ class PositionUpdate:
     conid: int
     symbol: str
     right: str
+    strike: float
+    expiry: str
     position: float
     market_price: float
     market_value: float
@@ -248,6 +250,8 @@ class IBPositionStreamer:
                 conid=item.contract.conId,
                 symbol=item.contract.symbol,
                 right=item.contract.right,
+                strike=item.contract.strike,
+                expiry=item.contract.lastTradeDateOrContractMonth,
                 position=item.position,
                 market_price=item.marketPrice,
                 market_value=item.marketValue,
