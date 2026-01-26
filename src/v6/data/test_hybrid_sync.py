@@ -10,12 +10,14 @@ Tests complete flow:
 """
 
 import asyncio
+
 from loguru import logger
 
-from v6.data.strategy_registry import StrategyRegistry
 from v6.data.position_queue import PositionQueue
-from v6.data.position_streamer import IBPositionStreamer, PositionUpdateHandler, PositionUpdate
+from v6.data.position_streamer import IBPositionStreamer, PositionUpdate, PositionUpdateHandler
 from v6.data.queue_worker import QueueWorker
+from v6.data.strategy_registry import StrategyRegistry
+
 
 class TestHandler(PositionUpdateHandler):
     """Test handler to catch streamed updates."""
@@ -93,7 +95,7 @@ async def main():
 
         # Check queue stats
         worker_stats = worker.get_stats()
-        logger.info(f"Worker stats:")
+        logger.info("Worker stats:")
         logger.info(f"  Total processed: {worker_stats.total_processed}")
         logger.info(f"  Success: {worker_stats.total_success}")
         logger.info(f"  Failed: {worker_stats.total_failed}")
@@ -113,10 +115,10 @@ async def main():
         logger.info("✓ TEST COMPLETE")
         logger.info("=" * 60)
         logger.info("\nHybrid Position Synchronization Working:")
-        logger.info(f"  ✓ Active contracts: Streamed (real-time updates)")
-        logger.info(f"  ✓ Non-essential: Queued (batch processing)")
-        logger.info(f"  ✓ Delta Lake: Updated with position data")
-        logger.info(f"  ✓ Streaming slots: Conserved (0 for queued)")
+        logger.info("  ✓ Active contracts: Streamed (real-time updates)")
+        logger.info("  ✓ Non-essential: Queued (batch processing)")
+        logger.info("  ✓ Delta Lake: Updated with position data")
+        logger.info("  ✓ Streaming slots: Conserved (0 for queued)")
 
     except Exception as e:
         logger.error(f"\n✗ TEST FAILED: {e}")
