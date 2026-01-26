@@ -1,14 +1,14 @@
 """
-IB Position Streaming Module
+IB Position Streaming Module (Hybrid: Stream + Queue)
 
-This module provides real-time position streaming from Interactive Brokers using
-event-driven architecture with ib_async.
+This module provides hybrid position synchronization from Interactive Brokers:
+- Active strategy contracts: STREAM (real-time updates via reqMktData)
+- Non-essential contracts: QUEUE (batch processing, 0 slots consumed)
 
 Key patterns:
-- Dataclass with slots=True for performance (Phase 1-04 pattern)
-- Singleton pattern to respect IB's 100-connection limit constraint
-- Handler registration for multiple downstream consumers
-- Asynchronous handler routing via asyncio.create_task
+- Hybrid approach: stream active, queue non-essential
+- Singleton pattern to respect IB's 100-connection limit
+- Handler registration for streamed position updates
 """
 
 import asyncio
@@ -17,37 +17,20 @@ from datetime import datetime
 from typing import List, Optional, Protocol, runtime_checkable
 
 from loguru import logger
+from ib_async import IB
 
 from v6.utils.ib_connection import IBConnectionManager
+from v6.data.strategy_registry import StrategyRegistry
+from v6.data.position_queue import PositionQueue
 
 
 @dataclass(slots=True)
 class PositionUpdate:
-    """
-    Position update from IB streaming.
-
-    This dataclass holds real-time position updates from IB's updatePortfolioEvent.
-    Uses slots=True for performance (Phase 1-04 pattern).
-
-    Attributes:
-        conid: IB contract ID
-        symbol: Underlying symbol (e.g., "SPY")
-        right: Option type (CALL or PUT)
-        strike: Strike price
-        expiry: Expiration date (IB format: YYYYMMDD)
-        position: Position size (positive for long, negative for short)
-        market_price: Current market price per share
-        market_value: Total market value (position * market_price * 100)
-        average_cost: Average cost per share
-        unrealized_pnl: Unrealized profit/loss
-        timestamp: When this update was received
-    """
+    """Position update from IB streaming."""
     conid: int
     symbol: str
-    right: str  # CALL or PUT
-    strike: float
-    expiry: str
-    position: float  # Positive for long, negative for short
+    right: str
+    position: float
     market_price: float
     market_value: float
     average_cost: float
@@ -57,120 +40,207 @@ class PositionUpdate:
 
 @runtime_checkable
 class PositionUpdateHandler(Protocol):
-    """
-    Protocol for position update handlers.
-
-    This protocol enables duck typing with type hints for handler registration.
-    Any class with an async on_position_update method can be used as a handler.
-
-    Example:
-        ```python
-        class MyHandler(PositionUpdateHandler):
-            async def on_position_update(self, update: PositionUpdate) -> None:
-                print(f"Position update: {update.symbol}")
-        ```
-    """
+    """Protocol for position update handlers."""
 
     async def on_position_update(self, update: PositionUpdate) -> None:
-        """
-        Handle position update.
-
-        Args:
-            update: Position update from IB streaming
-        """
+        """Handle position update."""
         ...
 
 
 class IBPositionStreamer:
     """
-    Manages IB position streaming with single connection constraint.
+    Manages IB position synchronization with hybrid approach.
 
-    CRITICAL: Uses ONE persistent IB connection for ALL streaming.
-    Singleton pattern - do not create multiple instances.
+    **Hybrid Architecture:**
+    - Active contracts → STREAM (reqMktData, real-time, consume slots)
+    - Non-essential contracts → QUEUE (batch processing, 0 slots)
 
-    **100-Connection Limit Constraint:**
-    IB streaming has a connection limit. This class enforces singleton pattern
-    to ensure only ONE connection is used for all position streaming.
+    **Decision Logic:**
+    Checks StrategyRegistry.is_active(conid) to determine stream vs queue.
 
-    Example:
-        ```python
-        # Get singleton instance
-        streamer = IBPositionStreamer()
-
-        # Register handler
-        handler = MyHandler()
-        streamer.register_handler(handler)
-
-        # Start streaming
-        await streamer.start()
-        ```
+    **Singleton Pattern:**
+    Enforces single IB connection instance to respect 100-connection limit.
     """
 
     _instance: Optional['IBPositionStreamer'] = None
 
     def __new__(cls):
-        """Enforce singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
-        """Initialize singleton instance (only once)."""
+    def __init__(
+        self,
+        registry: Optional[StrategyRegistry] = None,
+        queue: Optional[PositionQueue] = None
+    ):
+        """
+        Initialize streamer.
+
+        Args:
+            registry: StrategyRegistry for checking active contracts
+            queue: PositionQueue for queuing non-essential contracts
+        """
         # Only initialize once
         if hasattr(self, '_initialized'):
             return
 
-        self._connection: Optional[IBConnectionManager] = None
+        self._connection = None
         self._handlers: List[PositionUpdateHandler] = []
-        self._is_streaming = False
+        self._registry = registry or StrategyRegistry()
+        self._queue = queue or PositionQueue()
+        self._is_running = False
+        self._streamed_contracts: set[int] = set()  # Track actively streamed contracts
         self._initialized = True
 
-    async def start(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 7497,
-        client_id: int = 1
-    ) -> None:
+    def register_handler(self, handler: PositionUpdateHandler) -> None:
         """
-        Start streaming - creates ONE persistent connection.
+        Register a handler to receive position updates.
+
+        Handlers are called ONLY for streamed positions (active contracts).
+        Queued positions are processed by QueueWorker (no handler notification).
 
         Args:
-            host: IB gateway/TWS host
-            port: IB gateway/TWS port (7497 for paper trading, 7496 for production)
-            client_id: Unique client ID for this connection
+            handler: Handler to register
         """
-        if self._is_streaming:
-            logger.warning("Already streaming, ignoring start request")
+        if handler not in self._handlers:
+            self._handlers.append(handler)
+            logger.debug(f"Registered handler: {handler.__class__.__name__}")
+
+    async def start(self) -> None:
+        """
+        Start hybrid position synchronization.
+
+        1. Initialize registry and queue
+        2. Get IB connection
+        3. Fetch all positions via reqPositionsAsync()
+        4. For each position: stream if active, queue if not
+        5. Subscribe to updatePortfolioEvent for streamed contracts
+        """
+        if self._is_running:
+            logger.warning("IBPositionStreamer already running")
             return
 
-        # Create single connection
-        self._connection = IBConnectionManager(
-            host=host,
-            port=port,
-            client_id=client_id
+        logger.info("Starting hybrid position synchronization...")
+
+        # Initialize registry and queue
+        await self._registry.initialize()
+        await self._queue.initialize()
+
+        # Get IB connection
+        from v6.utils.ib_connection import IBConnectionManager
+        conn_manager = IBConnectionManager()
+        self._connection = await conn_manager.get_connection()
+
+        if not self._connection or not self._connection.is_connected:
+            raise ConnectionError("IB not connected")
+
+        ib = self._connection.ib
+
+        # Fetch all positions
+        positions = await ib.reqPositionsAsync()
+        logger.info(f"Fetched {len(positions)} positions from IB")
+
+        # Hybrid routing: stream active, queue non-essential
+        streamed_count = 0
+        queued_count = 0
+
+        for item in positions:
+            # Only process option positions with non-zero quantity
+            if not hasattr(item.contract, 'secType') or item.contract.secType != 'OPT':
+                continue
+
+            if item.position == 0:
+                continue
+
+            conid = item.contract.conId
+            symbol = item.contract.symbol
+
+            # Check if contract is in active strategy
+            if self._registry.is_active(conid):
+                # STREAM: Subscribe to market data for real-time updates
+                await self._stream_contract(conid, item.contract)
+                streamed_count += 1
+            else:
+                # QUEUE: Insert into queue for batch processing
+                await self._queue.insert(conid=conid, symbol=symbol, priority=2)
+                queued_count += 1
+
+        # Subscribe to portfolio updates for streamed contracts
+        ib.updatePortfolioEvent += self._on_position_update
+
+        self._is_running = True
+
+        logger.info(
+            f"✓ Started hybrid position sync: "
+            f"{streamed_count} streamed (active), "
+            f"{queued_count} queued (non-essential)"
         )
 
-        await self._connection.connect()
-        await self._connection.start_heartbeat()
+    async def stop(self) -> None:
+        """Stop hybrid position synchronization."""
+        if not self._is_running:
+            return
 
-        # Register single event handler that routes to all listeners
-        @self._connection.ib.updatePortfolioEvent
-        def _on_portfolio_update(item):
-            self._handle_portfolio_update(item)
+        self._is_running = False
 
-        self._is_streaming = True
-        logger.info("✓ IB Position Streaming started (singleton)")
+        if self._connection and self._connection.is_connected:
+            # Unsubscribe from portfolio updates
+            ib = self._connection.ib
+            ib.updatePortfolioEvent -= self._on_position_update
 
-    def _handle_portfolio_update(self, item) -> None:
+            # Cancel market data subscriptions
+            for conid in self._streamed_contracts:
+                try:
+                    ib.cancelMktData(conid)
+                except Exception as e:
+                    logger.warning(f"Failed to cancel market data for {conid}: {e}")
+
+            self._streamed_contracts.clear()
+
+        logger.info("✓ Stopped hybrid position synchronization")
+
+    async def _stream_contract(self, conid: int, contract) -> None:
         """
-        Route portfolio update to all registered handlers.
+        Stream market data for active contract.
 
         Args:
-            item: Portfolio update item from IB
+            conid: IB contract ID
+            contract: IB Contract object
+        """
+        try:
+            ib = self._connection.ib
+
+            # Subscribe to market data (snapshot=False for streaming)
+            ib.reqMktData(
+                contract,
+                "",  # genericTickList (empty for basic data)
+                "",  # snapshot (False = streaming)
+                False  # snapshot
+            )
+
+            self._streamed_contracts.add(conid)
+            logger.debug(f"✓ Streaming contract {conid} ({contract.symbol})")
+
+        except Exception as e:
+            logger.error(f"Failed to stream contract {conid}: {e}")
+
+    async def _on_position_update(self, item) -> None:
+        """
+        Handle portfolio update event (streamed contracts only).
+
+        Called by IB when position changes for streamed contracts.
+        Creates PositionUpdate and notifies all handlers.
+
+        Args:
+            item: IB PortfolioItem object
         """
         try:
             # Only process option positions
             if not hasattr(item.contract, 'secType') or item.contract.secType != 'OPT':
+                return
+
+            if item.position == 0:
                 return
 
             # Create PositionUpdate
@@ -178,8 +248,6 @@ class IBPositionStreamer:
                 conid=item.contract.conId,
                 symbol=item.contract.symbol,
                 right=item.contract.right,
-                strike=item.contract.strike,
-                expiry=item.contract.lastTradeDateOrContractMonth,
                 position=item.position,
                 market_price=item.marketPrice,
                 market_value=item.marketValue,
@@ -188,58 +256,23 @@ class IBPositionStreamer:
                 timestamp=datetime.now()
             )
 
-            # Route to ALL registered handlers (asynchronous)
+            # Notify all handlers asynchronously
             for handler in self._handlers:
                 asyncio.create_task(handler.on_position_update(update))
 
         except Exception as e:
-            logger.error(f"Error in portfolio update handler: {e}")
-
-    def register_handler(self, handler: PositionUpdateHandler) -> None:
-        """
-        Register a handler to receive position updates.
-
-        Args:
-            handler: Handler instance implementing PositionUpdateHandler protocol
-        """
-        if handler not in self._handlers:
-            self._handlers.append(handler)
-            logger.info(f"Registered handler: {handler.__class__.__name__}")
-
-    def unregister_handler(self, handler: PositionUpdateHandler) -> None:
-        """
-        Unregister a handler.
-
-        Args:
-            handler: Handler instance to remove
-        """
-        if handler in self._handlers:
-            self._handlers.remove(handler)
-            logger.info(f"Unregistered handler: {handler.__class__.__name__}")
-
-    async def stop(self) -> None:
-        """Stop streaming - stops the single persistent connection."""
-        if not self._is_streaming:
-            return
-
-        self._is_streaming = False
-
-        if self._connection:
-            await self._connection.stop_heartbeat()
-            await self._connection.disconnect()
-
-        logger.info("✓ IB Position Streaming stopped")
+            logger.error(f"Error handling position update: {e}")
 
     @property
     def is_streaming(self) -> bool:
         """
-        Check if streaming is active.
+        Check if hybrid sync is active.
 
         Returns:
             True if streaming is active and connection is healthy
         """
         return (
-            self._is_streaming and
+            self._is_running and
             self._connection is not None and
             self._connection.is_connected
         )
