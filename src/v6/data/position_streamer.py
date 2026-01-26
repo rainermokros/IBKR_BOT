@@ -17,11 +17,10 @@ from datetime import datetime
 from typing import List, Optional, Protocol, runtime_checkable
 
 from loguru import logger
-from ib_async import IB
 
-from v6.utils.ib_connection import IBConnectionManager
-from v6.data.strategy_registry import StrategyRegistry
 from v6.data.position_queue import PositionQueue
+from v6.data.strategy_registry import StrategyRegistry
+from v6.utils.ib_connection import IBConnectionManager
 
 
 @dataclass(slots=True)
@@ -134,7 +133,6 @@ class IBPositionStreamer:
         await self._queue.initialize()
 
         # Get IB connection
-        from v6.utils.ib_connection import IBConnectionManager
         conn_manager = IBConnectionManager()
         await conn_manager.connect()
         self._connection = conn_manager

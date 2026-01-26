@@ -7,11 +7,12 @@ Tests IBPositionStreamer with hybrid approach:
 """
 
 import asyncio
+
 from loguru import logger
 
-from v6.data.position_streamer import IBPositionStreamer, PositionUpdateHandler, PositionUpdate
-from v6.data.strategy_registry import StrategyRegistry
 from v6.data.position_queue import PositionQueue
+from v6.data.position_streamer import IBPositionStreamer, PositionUpdate, PositionUpdateHandler
+from v6.data.strategy_registry import StrategyRegistry
 
 
 class TestHandler(PositionUpdateHandler):
@@ -68,7 +69,7 @@ async def main():
         logger.info("✓ Hybrid position sync stopped")
 
         # Verify results
-        logger.info(f"\n=== Results ===")
+        logger.info("\n=== Results ===")
         logger.info(f"Streamed updates received: {len(handler.updates_received)}")
 
         # Check queue
