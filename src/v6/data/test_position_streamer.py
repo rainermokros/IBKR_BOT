@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+
 from loguru import logger
 
 from v6.data import IBPositionStreamer, PositionUpdate, PositionUpdateHandler

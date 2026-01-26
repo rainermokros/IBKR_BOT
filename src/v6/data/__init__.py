@@ -8,9 +8,9 @@ This package provides data access components for the v6 trading system including
 """
 
 from v6.data.position_streamer import (
+    IBPositionStreamer,
     PositionUpdate,
     PositionUpdateHandler,
-    IBPositionStreamer,
 )
 
 __all__ = [

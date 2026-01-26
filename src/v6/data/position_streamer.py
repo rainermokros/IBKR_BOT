@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Protocol, runtime_checkable
 
-from ib_async import IB
 from loguru import logger
 
 from v6.utils.ib_connection import IBConnectionManager
