@@ -337,11 +337,13 @@ class PortfolioRiskCalculator:
 
             delta_per_symbol = dict(zip(
                 symbol_greeks["symbol"].to_list(),
-                symbol_greeks["delta"].to_list()
+                symbol_greeks["delta"].to_list(),
+                strict=True
             ))
             gamma_per_symbol = dict(zip(
                 symbol_greeks["symbol"].to_list(),
-                symbol_greeks["gamma"].to_list()
+                symbol_greeks["gamma"].to_list(),
+                strict=True
             ))
         except (AttributeError, KeyError) as e:
             logger.warning(f"Could not aggregate by symbol: {e}")
@@ -399,7 +401,8 @@ class PortfolioRiskCalculator:
                         symbol: (exp / total_exposure)
                         for symbol, exp in zip(
                             symbol_exposure["symbol"].to_list(),
-                            symbol_exposure["exposure"].to_list()
+                            symbol_exposure["exposure"].to_list(),
+                            strict=True
                         )
                     }
                 else:
@@ -550,7 +553,8 @@ class PortfolioRiskCalculator:
                         )
                         for symbol, exposure in zip(
                             max_pos["symbol"].to_list(),
-                            max_pos["exposure"].to_list()
+                            max_pos["exposure"].to_list(),
+                            strict=True
                         ):
                             if (exposure / total_exposure) > max_position_pct:
                                 over_limit.append(symbol)

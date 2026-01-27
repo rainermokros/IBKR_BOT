@@ -5,18 +5,19 @@ Tests portfolio risk calculations including Greek aggregation,
 exposure metrics, and limit checking.
 """
 
-import pytest
 from datetime import datetime
-from unittest.mock import Mock, MagicMock
-import polars as pl
+from unittest.mock import Mock
 
+import polars as pl
+import pytest
+
+from src.v6.data.repositories.positions import PositionsRepository
 from src.v6.decisions.portfolio_risk import (
-    PortfolioGreeks,
     ExposureMetrics,
+    PortfolioGreeks,
     PortfolioRisk,
     PortfolioRiskCalculator,
 )
-from src.v6.data.repositories.positions import PositionsRepository
 
 
 @pytest.fixture
