@@ -115,7 +115,6 @@ class PaperTrader:
             host=config.ib_host,
             port=config.ib_port,
             client_id=config.ib_client_id,
-            readonly=False,  # Need order placement for paper trading
         )
 
         # Create StrategyRepository for paper trading
