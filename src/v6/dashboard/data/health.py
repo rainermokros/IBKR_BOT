@@ -30,7 +30,7 @@ def check_ib_connection() -> dict[str, Any]:
     """
     # Try to import IB connection manager
     try:
-        from v6.execution.ib_connection import IBConnectionManager
+        from src.v6.utils.ib_connection import IBConnectionManager
 
         manager = IBConnectionManager()
         status = manager.get_status()
@@ -243,7 +243,7 @@ def reconnect_ib() -> dict[str, Any]:
         - message: str - Status message
     """
     try:
-        from v6.execution.ib_connection import IBConnectionManager
+        from src.v6.utils.ib_connection import IBConnectionManager
 
         manager = IBConnectionManager()
         manager.reconnect()
