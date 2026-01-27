@@ -2,7 +2,7 @@
 Dashboard data loading functions.
 
 This module provides data loading functions for the dashboard,
-including positions, portfolio metrics, and alerts.
+including positions, portfolio metrics, alerts, and system health.
 """
 
 from v6.dashboard.data.alerts import (
@@ -12,6 +12,16 @@ from v6.dashboard.data.alerts import (
     load_alerts,
     resolve_alert_dashboard,
 )
+from v6.dashboard.data.health import (
+    check_data_freshness,
+    check_ib_connection,
+    clear_queue,
+    force_sync,
+    generate_health_alerts,
+    get_active_strategies,
+    get_system_metrics,
+    reconnect_ib,
+)
 
 __all__ = [
     "load_alerts",
@@ -19,4 +29,12 @@ __all__ = [
     "filter_alerts",
     "acknowledge_alert_dashboard",
     "resolve_alert_dashboard",
+    "check_ib_connection",
+    "check_data_freshness",
+    "get_system_metrics",
+    "get_active_strategies",
+    "reconnect_ib",
+    "force_sync",
+    "clear_queue",
+    "generate_health_alerts",
 ]
