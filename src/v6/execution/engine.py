@@ -119,8 +119,8 @@ class OrderExecutionEngine:
             mock_order_id = f"DRY_{order.order_id}_{datetime.now().timestamp()}"
             self.logger.info(f"[DRY RUN] Simulated order placement: {mock_order_id}")
 
-            # Update order status
-            order.status = OrderStatus.SUBMITTED
+            # Update order status (simulate successful fill)
+            order.status = OrderStatus.FILLED
             order.filled_quantity = order.quantity
             order.filled_at = datetime.now()
             return order
@@ -310,6 +310,21 @@ class OrderExecutionEngine:
 
         for leg in strategy.legs:
             try:
+                # Opposite action to close
+                close_action = (
+                    OrderAction.SELL if leg.action == OrderAction.BUY else OrderAction.BUY
+                )
+
+                if self.dry_run:
+                    # Simulate close order in dry run mode
+                    mock_id = f"DRY_{close_action.value}_{leg.right.value}_{leg.strike}_{datetime.now().timestamp()}"
+                    order_ids.append(mock_id)
+                    self.logger.info(
+                        f"[DRY RUN] Would close: {close_action.value} {leg.quantity}x "
+                        f"{leg.right.value} ${leg.strike}"
+                    )
+                    continue
+
                 # Create IB contract for leg
                 from ib_async import Option
 
@@ -324,11 +339,6 @@ class OrderExecutionEngine:
 
                 await self.ib_conn.ensure_connected()
                 await self.ib.qualifyContractsAsync(contract)
-
-                # Opposite action to close
-                close_action = (
-                    OrderAction.SELL if leg.action == OrderAction.BUY else OrderAction.BUY
-                )
 
                 # Create market order for immediate close
                 close_order = OrderModel(
@@ -350,29 +360,30 @@ class OrderExecutionEngine:
                     filled_at=None,
                 )
 
-                if self.dry_run:
-                    mock_id = f"DRY_CLOSE_{leg.action.value}_{contract.conId}"
-                    order_ids.append(mock_id)
-                    self.logger.info(
-                        f"[DRY RUN] Would close: {close_action.value} {leg.quantity}x "
-                        f"{leg.right.value} ${leg.strike}"
-                    )
-                else:
-                    # Place order
-                    updated_order = await self.place_order(contract, close_order)
-                    order_ids.append(updated_order.order_id)
+                # Place order
+                updated_order = await self.place_order(contract, close_order)
+                order_ids.append(updated_order.order_id)
 
-                    self.logger.info(
-                        f"Closed leg: {close_action.value} {leg.quantity}x "
-                        f"{leg.right.value} ${leg.strike}"
-                    )
+                self.logger.info(
+                    f"Closed leg: {close_action.value} {leg.quantity}x "
+                    f"{leg.right.value} ${leg.strike}"
+                )
 
             except Exception as e:
                 self.logger.error(f"Failed to close leg: {e}")
                 # Continue with other legs
 
+        # Return result with error message if no orders succeeded
+        if len(order_ids) == 0:
+            return ExecutionResult(
+                success=False,
+                action_taken="FAILED",
+                order_ids=[],
+                error_message="Failed to close any legs",
+            )
+
         return ExecutionResult(
-            success=len(order_ids) > 0,
+            success=True,
             action_taken="CLOSED",
             order_ids=order_ids,
             error_message=None,
