@@ -66,10 +66,11 @@ class PaperTradingConfig:
 
     def __post_init__(self):
         """Validate configuration after initialization."""
-        # Enforce dry_run mode
+        # Note: dry_run can be False for paper trading account validation
+        # User can reset paper account anytime, so real orders are safe
         if not self.dry_run:
-            logger.warning("Paper trading config requires dry_run=True, setting it now")
-            self.dry_run = True
+            logger.info("Paper trading config: dry_run=False - REAL orders will execute in PAPER account")
+            logger.info("Paper account can be reset anytime - zero risk!")
 
         # Validate IB connection settings
         if self.ib_port == 7496:
