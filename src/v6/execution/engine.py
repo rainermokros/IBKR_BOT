@@ -22,10 +22,9 @@ Usage:
     result = await engine.place_order(contract, order)
 """
 
-import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 from uuid import uuid4
 
 import ib_async
@@ -34,19 +33,16 @@ from ib_async import LimitOrder, MarketOrder, Order, StopOrder
 from src.v6.execution.models import (
     BracketOrder,
     ExecutionResult,
-    Order as OrderModel,
     OrderAction,
     OrderStatus,
     OrderType,
     TimeInForce,
 )
+from src.v6.execution.models import (
+    Order as OrderModel,
+)
 from src.v6.strategies.models import (
-    LegExecution,
-    LegStatus,
-    LegSpec,
     Strategy,
-    StrategyExecution,
-    StrategyType,
 )
 from src.v6.utils.ib_connection import IBConnectionManager
 

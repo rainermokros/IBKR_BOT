@@ -6,21 +6,23 @@ Run with: pytest src/v6/execution/test_engine.py -v
 """
 
 from datetime import date, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from ib_async import LimitOrder, MarketOrder, Order, StopOrder
+from ib_async import LimitOrder
 
 from src.v6.execution.engine import OrderExecutionEngine
 from src.v6.execution.models import (
     BracketOrder,
     ExecutionResult,
-    Order as OrderModel,
     OrderAction,
     OrderStatus,
     OrderType,
     TimeInForce,
+)
+from src.v6.execution.models import (
+    Order as OrderModel,
 )
 from src.v6.strategies.models import (
     LegAction,

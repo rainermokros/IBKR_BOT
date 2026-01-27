@@ -16,11 +16,10 @@ Decision tree:
     └─ No → Use Pydantic (validation critical)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from uuid import uuid4
 
 
 class OrderStatus(str, Enum):
