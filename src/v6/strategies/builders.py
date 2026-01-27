@@ -90,12 +90,14 @@ class IronCondorBuilder:
         - call_width: Width of call spread (default: 10)
         - dte: Days to expiration (default: 45)
         - delta_target: Target delta for short strikes (default: 16, i.e., 0.16 delta)
+        - option_fetcher: Optional OptionDataFetcher to query real expirations from IB
     """
 
     priority: int = 10
     name: str = "IronCondorBuilder"
+    option_fetcher: Optional[OptionDataFetcher] = None
 
-    def build(
+    async def build(
         self,
         symbol: str,
         underlying_price: float,
@@ -131,33 +133,53 @@ class IronCondorBuilder:
         if not (0 < delta_target < 1):
             raise ValueError(f"delta_target must be between 0 and 1, got {delta_target}")
 
-        # Calculate expiration date
-        expiration = date.today() + timedelta(days=dte)
+        # Get expiration date from IB (if option_fetcher available)
+        if self.option_fetcher:
+            expiration_str = await self.option_fetcher.find_best_expiration(
+                symbol=symbol,
+                target_dte=dte,
+                min_dte=21,
+                max_dte=60
+            )
+            if not expiration_str:
+                raise ValueError(f"No suitable expiration found for {symbol} within 21-60 DTE")
 
-        # Calculate strikes (simplified - in production would use option chain data)
-        # Short strikes are OTM (approximately delta_target away from ATM)
-        # For simplicity, we estimate using underlying price
+            # Convert YYYYMMDD to date object
+            from datetime import datetime
+            expiration = datetime.strptime(expiration_str, "%Y%m%d").date()
 
-        # Short call strike (OTM, above current price)
-        # Delta 0.16 ≈ 5-10% OTM, use 7% as approximation
-        short_call_strike = round((underlying_price * 1.07) / 5) * 5
-        long_call_strike = short_call_strike + call_width
+            # Fetch real strikes from IB option chain
+            strikes = await self._fetch_available_strikes(symbol, expiration_str)
+            if not strikes:
+                raise ValueError(f"No strikes available for {symbol} expiration {expiration_str}")
 
-        # Short put strike (OTM, below current price)
-        # Delta 0.16 ≈ 5-10% OTM, use 7% as approximation
-        short_put_strike = round((underlying_price * 0.93) / 5) * 5
-        long_put_strike = short_put_strike - put_width
+            # Select appropriate OTM strikes from real chain
+            short_put_strike, long_put_strike = self._select_put_strikes(
+                strikes, underlying_price, put_width
+            )
+            short_call_strike, long_call_strike = self._select_call_strikes(
+                strikes, underlying_price, call_width
+            )
+        else:
+            # Fallback to calculated strikes (for testing without IB)
+            logger.warning("No option_fetcher provided, using calculated strikes (NOT FOR PRODUCTION)")
+            expiration = date.today() + timedelta(days=dte)
 
-        # Ensure proper structure: LP < SP < SC < LC
-        if long_put_strike >= short_put_strike:
-            long_put_strike = short_put_strike - put_width
-        if short_put_strike >= short_call_strike:
-            # Adjust to prevent overlap
-            midpoint = underlying_price / 5 * 5
-            short_put_strike = midpoint - 5
-            short_call_strike = midpoint + 5
-            long_put_strike = short_put_strike - put_width
+            # Calculate strikes (simplified - NOT PRODUCTION READY)
+            short_call_strike = round((underlying_price * 1.07) / 5) * 5
             long_call_strike = short_call_strike + call_width
+            short_put_strike = round((underlying_price * 0.93) / 5) * 5
+            long_put_strike = short_put_strike - put_width
+
+            # Ensure proper structure: LP < SP < SC < LC
+            if long_put_strike >= short_put_strike:
+                long_put_strike = short_put_strike - put_width
+            if short_put_strike >= short_call_strike:
+                midpoint = underlying_price / 5 * 5
+                short_put_strike = midpoint - 5
+                short_call_strike = midpoint + 5
+                long_put_strike = short_put_strike - put_width
+                long_call_strike = short_call_strike + call_width
 
         # Build legs
         legs = [
@@ -283,6 +305,147 @@ class IronCondorBuilder:
 
         logger.info(f"✓ Iron Condor validation passed for {strategy.symbol}")
         return True
+
+    async def _fetch_available_strikes(
+        self,
+        symbol: str,
+        expiration: str
+    ) -> list[float]:
+        """
+        Fetch available strikes from IB option chain for given expiration.
+
+        Args:
+            symbol: Underlying symbol
+            expiration: Expiration date string (YYYYMMDD)
+
+        Returns:
+            List of available strike prices
+        """
+        if not self.option_fetcher:
+            return []
+
+        try:
+            # Get option chain from IB
+            chain = await self.option_fetcher.ib_conn.ib.reqSecDefOptParamsAsync(
+                symbol,
+                "",
+                "STK",
+                None  # underlyingConId
+            )
+
+            all_strikes = []
+            for exp_data in chain:
+                # Filter by expiration
+                if expiration in exp_data.expirations:
+                    all_strikes.extend(exp_data.strikes)
+                    break  # Found our expiration, no need to check others
+
+            if not all_strikes:
+                logger.warning(f"No strikes found for {symbol} expiration {expiration}")
+                return []
+
+            logger.info(f"✓ Found {len(all_strikes)} strikes for {symbol} {expiration}")
+            return sorted(all_strikes)
+
+        except Exception as e:
+            logger.error(f"Error fetching strikes for {symbol}: {e}")
+            return []
+
+    def _select_put_strikes(
+        self,
+        available_strikes: list[float],
+        underlying_price: float,
+        width: int
+    ) -> tuple[int, int]:
+        """
+        Select put strikes from available strikes.
+
+        Strategy:
+        - Short put: OTM, closest strike below underlying (7-10% OTM)
+        - Long put: width below short put (for protection)
+
+        Args:
+            available_strikes: List of available strike prices
+            underlying_price: Current underlying price
+            width: Width of put spread
+
+        Returns:
+            Tuple of (short_put_strike, long_put_strike)
+        """
+        # Find all strikes below underlying price
+        put_strikes = [s for s in available_strikes if s < underlying_price]
+
+        if not put_strikes:
+            raise ValueError(f"No put strikes available below underlying price {underlying_price}")
+
+        # Select short put: OTM, closest to ~7% below underlying
+        target_short_put = underlying_price * 0.93
+        short_put_strike = min(put_strikes, key=lambda s: abs(s - target_short_put))
+
+        # Select long put: width below short put
+        target_long_put = short_put_strike - width
+        long_put_strikes = [s for s in available_strikes if s <= short_put_strike - width + 5]
+
+        if not long_put_strikes:
+            # Fallback: use closest available below short put
+            long_put_strike = min(put_strikes, key=lambda s: abs(s - target_long_put))
+        else:
+            long_put_strike = min(long_put_strikes, key=lambda s: abs(s - target_long_put))
+
+        logger.info(
+            f"✓ Selected put strikes: Short=${short_put_strike}, Long=${long_put_strike} "
+            f"(underlying=${underlying_price:.2f}, width=${width})"
+        )
+
+        return int(short_put_strike), int(long_put_strike)
+
+    def _select_call_strikes(
+        self,
+        available_strikes: list[float],
+        underlying_price: float,
+        width: int
+    ) -> tuple[int, int]:
+        """
+        Select call strikes from available strikes.
+
+        Strategy:
+        - Short call: OTM, closest strike above underlying (7-10% OTM)
+        - Long call: width above short call (for protection)
+
+        Args:
+            available_strikes: List of available strike prices
+            underlying_price: Current underlying price
+            width: Width of call spread
+
+        Returns:
+            Tuple of (short_call_strike, long_call_strike)
+        """
+        # Find all strikes above underlying price
+        call_strikes = [s for s in available_strikes if s > underlying_price]
+
+        if not call_strikes:
+            raise ValueError(f"No call strikes available above underlying price {underlying_price}")
+
+        # Select short call: OTM, closest to ~7% above underlying
+        target_short_call = underlying_price * 1.07
+        short_call_strike = min(call_strikes, key=lambda s: abs(s - target_short_call))
+
+        # Select long call: width above short call
+        target_long_call = short_call_strike + width
+        long_call_strikes = [s for s in available_strikes if s >= short_call_strike + width - 5]
+
+        if not long_call_strikes:
+            # Fallback: use closest available above short call
+            long_call_strike = min(call_strikes, key=lambda s: abs(s - target_long_call))
+        else:
+            long_call_strike = min(long_call_strikes, key=lambda s: abs(s - target_long_call))
+
+        logger.info(
+            f"✓ Selected call strikes: Short=${short_call_strike}, Long=${long_call_strike} "
+            f"(underlying=${underlying_price:.2f}, width=${width})"
+        )
+
+        return int(short_call_strike), int(long_call_strike)
 
 
 @dataclass(slots=True)

@@ -4,12 +4,12 @@ Unit tests for AlertManager
 Tests alert creation, persistence, querying, and lifecycle management.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from src.v6.alerts.manager import AlertManager
 from src.v6.alerts.models import (
-    Alert,
     AlertQuery,
     AlertSeverity,
     AlertStatus,

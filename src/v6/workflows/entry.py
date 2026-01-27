@@ -239,7 +239,7 @@ class EntryWorkflow:
         if underlying_price <= 0:
             raise ValueError(f"Invalid underlying price: {underlying_price}")
 
-        strategy = self.strategy_builder.build(symbol, underlying_price, params)
+        strategy = await self.strategy_builder.build(symbol, underlying_price, params)
 
         # Validate strategy
         if not self.strategy_builder.validate(strategy):

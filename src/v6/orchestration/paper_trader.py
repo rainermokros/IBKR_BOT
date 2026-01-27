@@ -180,8 +180,8 @@ class PaperTrader:
             logger.warning("Could not initialize AlertManager, using fallback")
             alert_manager = None
 
-        # Create strategy builder
-        strategy_builder = IronCondorBuilder()
+        # Create strategy builder (with option_fetcher for real strikes/expirations)
+        strategy_builder = IronCondorBuilder(option_fetcher=self.option_fetcher)
 
         # Create workflows
         # Note: EntryWorkflow may need different params based on actual constructor

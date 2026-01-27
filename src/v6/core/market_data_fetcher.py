@@ -70,6 +70,116 @@ class OptionDataFetcher:
 
         logger.info(f"✓ OptionDataFetcher initialized for symbols: {self.symbols}")
 
+    async def find_best_expiration(
+        self,
+        symbol: str,
+        target_dte: int = 45,
+        min_dte: int = 21,
+        max_dte: int = 60
+    ) -> Optional[str]:
+        """
+        Find the best expiration date from actual IB option chain.
+
+        Strategy:
+        - Prefer expirations >= target_dte (45+ days better than < 45)
+        - If none >= target_dte, use highest available below target
+        - Must be >= min_dte (21 days closing threshold)
+
+        Args:
+            symbol: Underlying symbol
+            target_dte: Target days to expiration (default: 45)
+            min_dte: Minimum acceptable DTE - closing threshold (default: 21)
+            max_dte: Maximum acceptable DTE (default: 60)
+
+        Returns:
+            Expiration date string (YYYYMMDD) with best DTE, or None
+        """
+        try:
+            await self.ib_conn.ensure_connected()
+
+            # Get stock contract
+            from ib_async import Contract
+            stock_contract = Contract(
+                secType="STK",
+                symbol=symbol,
+                exchange="SMART",
+                currency="USD"
+            )
+
+            qualified_contracts = await self.ib_conn.ib.qualifyContractsAsync(stock_contract)
+            if not qualified_contracts:
+                logger.error(f"Failed to qualify stock contract for {symbol}")
+                return None
+
+            stock_contract = qualified_contracts[0]
+
+            # Get option chain from IB
+            chain = await self.ib_conn.ib.reqSecDefOptParamsAsync(
+                stock_contract.symbol,
+                "",
+                stock_contract.secType,
+                stock_contract.conId
+            )
+
+            if not chain:
+                logger.warning(f"No option chain data for {symbol}")
+                return None
+
+            # Find best expiration with preference for >= target_dte
+            best_expiry = None
+            best_dte_above_target = None  # Best DTE >= target
+            best_dte_below_target = None  # Best DTE < target (fallback)
+            now = datetime.now()
+
+            for exp_data in chain:
+                expirations = exp_data.expirations
+
+                for expiry in expirations:
+                    try:
+                        expiry_date = datetime.strptime(expiry, "%Y%m%d")
+                        dte = (expiry_date - now).days
+
+                        # Check if within acceptable range
+                        if min_dte <= dte <= max_dte:
+                            if dte >= target_dte:
+                                # Prefer expirations >= target (45+)
+                                if best_dte_above_target is None or dte < best_dte_above_target:
+                                    best_dte_above_target = dte
+                                    best_expiry = expiry
+                            else:
+                                # Fallback: below target but >= min
+                                if best_dte_below_target is None or dte > best_dte_below_target:
+                                    best_dte_below_target = dte
+                                    # Only use below-target if no above-target found
+                                    if best_expiry is None:
+                                        best_expiry = expiry
+                    except ValueError:
+                        continue
+
+                # Found expirations in this chain, no need to check others
+                if best_expiry:
+                    break
+
+            if best_expiry:
+                expiry_date = datetime.strptime(best_expiry, "%Y%m%d")
+                dte = (expiry_date - now).days
+                preference = "above" if dte >= target_dte else "below"
+                logger.info(
+                    f"✓ Best expiration for {symbol}: {best_expiry} "
+                    f"({dte} DTE, {preference} target={target_dte}, min={min_dte})"
+                )
+                return best_expiry
+            else:
+                logger.warning(
+                    f"No expirations found for {symbol} within {min_dte}-{max_dte} DTE range"
+                )
+                return None
+
+        except Exception as e:
+            logger.error(f"Error finding best expiration for {symbol}: {e}")
+            self.circuit_breaker.record_failure()
+            return None
+
     async def fetch_option_chain(self, symbol: str) -> List[OptionContract]:
         """
         Fetch complete option chain for symbol.
