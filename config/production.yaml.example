@@ -1,0 +1,42 @@
+# Production Configuration Example
+#
+# Copy this file to config/production.yaml and fill in your settings.
+# DO NOT commit config/production.yaml to version control.
+
+# IB Gateway Connection
+ib:
+  host: "127.0.0.1"  # IB gateway host (use 192.168.1.100 for remote gateway)
+  port: 7497         # 7497 for TWS, 4001 for IB Gateway
+  client_id: 1       # Unique client ID (1-1000)
+
+# Trading Mode (SAFETY CHECK)
+dry_run: false  # MUST be false for production trading!
+
+# Logging Configuration
+logging:
+  level: "INFO"          # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "logs/v6_production.log"
+  max_size_mb: 100       # Log rotation size
+  backup_count: 10       # Number of backup logs to keep
+
+# Monitoring and Alerting
+monitoring:
+  enabled: true
+  alert_webhook_url: ""  # Optional: Slack/Discord webhook for alerts
+                         # Example: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+# Backup Configuration
+backup:
+  enabled: true
+  path: "backups/"       # Directory for backup storage
+
+# Health Check
+health_check:
+  interval_seconds: 60   # Seconds between health checks
+
+# Notes:
+# 1. Set dry_run: false ONLY when you're ready for live trading
+# 2. IB Gateway must be running before starting the system
+# 3. Ensure log and backup directories are writable
+# 4. Configure alert_webhook_url to receive critical alerts
+# 5. Monitor system health via dashboard (http://localhost:8501)
