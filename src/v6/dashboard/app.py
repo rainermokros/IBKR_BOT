@@ -40,7 +40,7 @@ def main():
     st.sidebar.page_link("pages/1_positions.py", label="Positions", icon="📈")
     st.sidebar.page_link("pages/2_portfolio.py", label="Portfolio", icon="💼")
     st.sidebar.page_link("pages/3_alerts.py", label="Alerts", icon="🔔", disabled=True)
-    st.sidebar.page_link("pages/4_health.py", label="System Health", icon="🩺", disabled=True)
+    st.sidebar.page_link("pages/4_health.py", label="System Health", icon="🩺")
 
     # Sidebar info
     st.sidebar.markdown("---")
@@ -86,7 +86,7 @@ def main():
     - **📈 Positions**: View all active positions with Greeks, P&L, and filtering
     - **💼 Portfolio**: Portfolio analytics with Greeks visualization and P&L history
     - **🔔 Alerts**: Alert management (coming in Plan 2)
-    - **🩺 System Health**: System status and metrics (coming in Plan 3)
+    - **🩺 System Health**: System status, metrics, and data freshness monitoring
     """)
 
     # Data freshness indicator

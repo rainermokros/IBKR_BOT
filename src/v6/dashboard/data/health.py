@@ -4,6 +4,7 @@ Provides functions for checking IB connection status, data freshness,
 system metrics, and active strategies registry.
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -11,9 +12,7 @@ from typing import Any
 import pandas as pd
 import psutil  # type: ignore[import-untyped]
 
-from v6.utils.logger import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def check_ib_connection() -> dict[str, Any]:
