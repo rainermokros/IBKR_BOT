@@ -1,0 +1,38 @@
+# Paper Trading Configuration Example
+#
+# Copy this file to config/paper_trading.yaml and update with your settings.
+# DO NOT commit config/paper_trading.yaml to version control.
+
+# IB Gateway Connection (Paper Trading Account)
+ib_host: "127.0.0.1"
+ib_port: 7497  # 7497 for paper trading, 7496 for production (never use 7496 here!)
+ib_client_id: 2
+
+# Safety Limits (enforced - cannot be bypassed)
+dry_run: true  # Always true for paper trading
+max_positions: 5  # Maximum concurrent positions
+max_order_size: 1  # Maximum contracts per order
+allowed_symbols:
+  - SPY
+  - QQQ
+  - IWM
+
+# Paper Trading Tracking
+paper_start_date: "2026-01-27T00:00:00"  # When you started paper trading
+paper_starting_capital: 100000.0  # Simulated starting capital
+
+# Logging
+log_level: "INFO"
+log_file: "logs/paper_trading.log"
+
+# Data Directory
+data_dir: "data/lake"
+
+# Notes:
+# - This configuration enforces strict safety limits
+# - dry_run is always True (cannot be set to False)
+# - max_positions limited to 10 (validation error if higher)
+# - max_order_size limited to 5 (validation error if higher)
+# - Only symbols in allowed_symbols can be traded
+# - All trades are logged with [PAPER] prefix
+# - Separate Delta Lake tables for paper trading data
