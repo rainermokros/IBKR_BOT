@@ -18,7 +18,7 @@ Supported strategies:
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Protocol
+from typing import List, Optional, Protocol
 from loguru import logger
 
 from src.v6.strategies.models import (
@@ -28,6 +28,7 @@ from src.v6.strategies.models import (
     OptionRight,
     LegAction,
 )
+from src.v6.core.market_data_fetcher import OptionDataFetcher
 
 
 class StrategyBuilder(Protocol):
