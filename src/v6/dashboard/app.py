@@ -42,6 +42,7 @@ def main():
     st.sidebar.page_link("pages/3_alerts.py", label="Alerts", icon="🔔", disabled=True)
     st.sidebar.page_link("pages/4_health.py", label="System Health", icon="🩺")
     st.sidebar.page_link("pages/5_paper_trading.py", label="Paper Trading", icon="📝")
+    st.sidebar.page_link("pages/6_futures.py", label="Futures", icon="📊")
 
     # Sidebar info
     st.sidebar.markdown("---")
@@ -89,6 +90,7 @@ def main():
     - **🔔 Alerts**: Alert management (coming in Plan 2)
     - **🩺 System Health**: System status, metrics, and data freshness monitoring
     - **📝 Paper Trading**: Track paper trading performance and validate strategies
+    - **📊 Futures**: Monitor futures data (ES, NQ, RTY) with correlation analysis
     """)
 
     # Data freshness indicator

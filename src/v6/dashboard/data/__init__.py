@@ -5,14 +5,14 @@ This module provides data loading functions for the dashboard,
 including positions, portfolio metrics, alerts, and system health.
 """
 
-from v6.dashboard.data.alerts import (
+from src.v6.dashboard.data.alerts import (
     acknowledge_alert_dashboard,
     filter_alerts,
     get_alert_summary,
     load_alerts,
     resolve_alert_dashboard,
 )
-from v6.dashboard.data.health import (
+from src.v6.dashboard.data.health import (
     check_data_freshness,
     check_ib_connection,
     clear_queue,

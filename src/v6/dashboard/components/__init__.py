@@ -5,15 +5,15 @@ This package contains reusable UI components for the dashboard.
 Components are widgets that can be shared across multiple pages.
 """
 
-from v6.dashboard.components.alert_card import (
+from src.v6.dashboard.components.alert_card import (
     alert_card,
     alert_list as alert_table,
     severity_badge as alert_severity_badge,
     status_badge as alert_status_badge,
 )
-from v6.dashboard.components.alert_list import alert_list_view
-from v6.dashboard.components.metric_card import metric_card
-from v6.dashboard.components.status_badge import status_badge
+from src.v6.dashboard.components.alert_list import alert_list_view
+from src.v6.dashboard.components.metric_card import metric_card
+from src.v6.dashboard.components.status_badge import status_badge
 
 __all__ = [
     "alert_card",

@@ -10,9 +10,9 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from v6.dashboard.components.metric_card import metric_card
-from v6.dashboard.components.status_badge import status_badge
-from v6.dashboard.data.health import (
+from src.v6.dashboard.components.metric_card import metric_card
+from src.v6.dashboard.components.status_badge import status_badge
+from src.v6.dashboard.data.health import (
     check_data_freshness,
     check_ib_connection,
     clear_queue,

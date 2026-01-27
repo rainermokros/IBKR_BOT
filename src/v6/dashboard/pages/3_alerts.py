@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 from loguru import logger
 
-from v6.dashboard.data.alerts import (
+from src.v6.dashboard.data.alerts import (
     acknowledge_alert_dashboard,
     filter_alerts,
     get_alert_summary,
