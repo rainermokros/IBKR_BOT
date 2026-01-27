@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -65,7 +66,12 @@ def main():
         "run",
         str(app_path),
         "--server.port", str(args.port),
+        "--server.headless", "true",  # Always run headless for production
     ]
+
+    # Add project root to PYTHONPATH
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_root) + ":" + env.get("PYTHONPATH", "")
 
     # Add headless mode if specified
     if args.headless:
@@ -89,8 +95,8 @@ def main():
     print()
 
     try:
-        # Launch Streamlit
-        subprocess.run(cmd, check=True)
+        # Launch Streamlit with PYTHONPATH set
+        subprocess.run(cmd, check=True, env=env)
     except KeyboardInterrupt:
         print("\nDashboard stopped by user")
     except subprocess.CalledProcessError as e:
