@@ -6,6 +6,7 @@ including severity badges, alert cards, and action buttons.
 """
 
 from datetime import datetime
+from typing import Callable, Optional
 
 import pandas as pd
 import streamlit as st
@@ -13,8 +14,8 @@ import streamlit as st
 
 def alert_card(
     alert: pd.Series | dict,
-    on_acknowledge: callable | None = None,
-    on_resolve: callable | None = None,
+    on_acknowledge: Optional[Callable] = None,
+    on_resolve: Optional[Callable] = None,
 ) -> None:
     """
     Display single alert with action buttons.
@@ -128,7 +129,7 @@ def alert_card(
 
 def alert_list(
     alerts_df: pd.DataFrame,
-    on_action: callable | None = None,
+    on_action: Optional[Callable] = None,
 ) -> None:
     """
     Display alerts as interactive table.

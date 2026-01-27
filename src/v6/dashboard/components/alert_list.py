@@ -4,6 +4,8 @@ Alert list component for dashboard.
 This module provides a list view component for displaying alerts.
 """
 
+from typing import Callable, Optional
+
 import pandas as pd
 import streamlit as st
 
@@ -11,8 +13,8 @@ import streamlit as st
 def alert_list_view(
     alerts_df: pd.DataFrame,
     show_actions: bool = True,
-    on_acknowledge: callable | None = None,
-    on_resolve: callable | None = None,
+    on_acknowledge: Optional[Callable] = None,
+    on_resolve: Optional[Callable] = None,
 ) -> None:
     """
     Display alerts in expandable list format.
