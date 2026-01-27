@@ -179,7 +179,6 @@ class PaperTrader:
             decision_engine=decision_engine,
             execution_engine=execution_engine,
             strategy_repo=self.strategy_repo,
-            alert_manager=alert_manager,
         )
 
         logger.info(
