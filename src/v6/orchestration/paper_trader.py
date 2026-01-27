@@ -50,6 +50,7 @@ from src.v6.utils.ib_connection import IBConnectionManager
 from src.v6.workflows.entry import EntryWorkflow
 from src.v6.workflows.exit import ExitWorkflow
 from src.v6.workflows.monitoring import PositionMonitoringWorkflow
+from src.v6.strategies.models import StrategyType
 
 logger = logger.bind(component="PaperTrader")
 
@@ -310,11 +311,12 @@ class PaperTrader:
                 # Note: In production, you'd validate order size here
                 execution = await self.entry_workflow.execute_entry(
                     symbol=symbol,
-                    strategy_type="iron_condor",  # TODO: Make configurable
+                    strategy_type=StrategyType.IRON_CONDOR,  # TODO: Make configurable
                     params={
                         "dte": 45,
                         "put_width": 10,
                         "call_width": 10,
+                        "underlying_price": market_data.get("underlying_price", 0.0),
                     },
                 )
 

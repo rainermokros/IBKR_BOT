@@ -246,7 +246,7 @@ class DataCollector:
             symbol: Underlying symbol (SPY, QQQ, IWM)
 
         Returns:
-            dict: Market data including iv_rank, vix, trend
+            dict: Market data including iv_rank, vix, trend, underlying_price
         """
         try:
             # Fetch market data (without option chain to save time)
@@ -254,11 +254,15 @@ class DataCollector:
             vix = await self.option_fetcher.get_vix()
             trend = await self.option_fetcher.get_underlying_trend(symbol)
 
+            # Fetch underlying price
+            underlying_price = await self._get_underlying_price(symbol)
+
             return {
                 "symbol": symbol,
                 "iv_rank": iv_rank,
                 "vix": vix,
                 "underlying_trend": trend,
+                "underlying_price": underlying_price,
                 "timestamp": datetime.now(),
             }
 
@@ -269,8 +273,53 @@ class DataCollector:
                 "iv_rank": 50.0,
                 "vix": 18.0,
                 "underlying_trend": "neutral",
+                "underlying_price": 0.0,
                 "timestamp": datetime.now(),
             }
+
+    async def _get_underlying_price(self, symbol: str) -> float:
+        """Get current underlying price from IB."""
+        try:
+            from ib_async import Contract
+
+            await self.ib_conn.ensure_connected()
+
+            stock_contract = Contract(
+                secType="STK",
+                symbol=symbol,
+                exchange="SMART",
+                currency="USD"
+            )
+
+            # Qualify contract
+            qualified_contracts = await self.ib_conn.ib.qualifyContractsAsync(stock_contract)
+            if not qualified_contracts:
+                logger.warning(f"Could not qualify contract for {symbol}")
+                return 0.0
+
+            stock_contract = qualified_contracts[0]
+
+            # Get current price using reqMktData (returns ticker object)
+            ticker = self.ib_conn.ib.reqMktData(stock_contract)
+
+            # Wait for ticker to update with price
+            import asyncio
+            for _ in range(10):  # Wait up to 1 second
+                await asyncio.sleep(0.1)
+                if ticker.last and ticker.last > 0:
+                    price = float(ticker.last)
+                    logger.debug(f"{symbol} underlying price: ${price:.2f}")
+                    # Cancel the market data subscription
+                    self.ib_conn.ib.cancelMktData(ticker.contract)
+                    return price
+
+            logger.warning(f"Timeout waiting for price for {symbol}")
+            self.ib_conn.ib.cancelMktData(ticker.contract)
+            return 0.0
+
+        except Exception as e:
+            logger.error(f"Error fetching underlying price for {symbol}: {e}")
+            return 0.0
 
     def get_collection_stats(self) -> dict:
         """

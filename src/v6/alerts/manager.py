@@ -17,10 +17,9 @@ Alert lifecycle:
 4. Alerts can be queried by symbol, status, type, severity
 """
 
-import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import polars as pl
 from deltalake import DeltaTable, write_deltalake
@@ -29,8 +28,8 @@ from loguru import logger
 from src.v6.alerts.models import (
     Alert,
     AlertQuery,
-    AlertStatus,
     AlertSeverity,
+    AlertStatus,
     AlertType,
     generate_alert_id,
 )
@@ -131,7 +130,7 @@ class AlertManager:
     async def create_alert(
         self,
         decision: Decision,
-        snapshot: Optional['PositionSnapshot'] = None
+        snapshot: Optional[Any] = None
     ) -> Optional[Alert]:
         """
         Create alert from decision.

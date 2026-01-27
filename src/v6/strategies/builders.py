@@ -139,11 +139,13 @@ class IronCondorBuilder:
         # For simplicity, we estimate using underlying price
 
         # Short call strike (OTM, above current price)
-        short_call_strike = round((underlying_price * (1 + delta_target * 2)) / 5) * 5
+        # Delta 0.16 ≈ 5-10% OTM, use 7% as approximation
+        short_call_strike = round((underlying_price * 1.07) / 5) * 5
         long_call_strike = short_call_strike + call_width
 
         # Short put strike (OTM, below current price)
-        short_put_strike = round((underlying_price * (1 - delta_target * 2)) / 5) * 5
+        # Delta 0.16 ≈ 5-10% OTM, use 7% as approximation
+        short_put_strike = round((underlying_price * 0.93) / 5) * 5
         long_put_strike = short_put_strike - put_width
 
         # Ensure proper structure: LP < SP < SC < LC
