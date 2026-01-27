@@ -18,28 +18,36 @@ Usage:
     register_all_rules(engine)
 """
 
-# Rule classes will be exported after implementation
-# from src.v6.decisions.rules.catastrophe import (
-#     CatastropheProtection,
-#     SingleLegExit,
-#     TrailingStopLoss,
-#     VIXExit,
-# )
-# from src.v6.decisions.rules.protection_rules import (
-#     TakeProfit,
-#     StopLoss,
-#     DeltaRisk,
-#     IVCrush,
-#     IVPercentileExit,
-# )
-# from src.v6.decisions.rules.roll_rules import (
-#     DTERoll,
-#     GammaRisk,
-#     TimeExit,
-# )
+# Export all rule classes for easy importing
+from src.v6.decisions.rules.catastrophe import (
+    CatastropheProtection,
+    SingleLegExit,
+    TrailingStopLoss,
+    VIXExit,
+)
+from src.v6.decisions.rules.protection_rules import (
+    DeltaRisk,
+    IVCrush,
+    IVPercentileExit,
+    StopLoss,
+    TakeProfit,
+)
+from src.v6.decisions.rules.roll_rules import DTERoll, GammaRisk, TimeExit
 
 __all__ = [
     "register_all_rules",
+    "CatastropheProtection",
+    "SingleLegExit",
+    "TrailingStopLoss",
+    "VIXExit",
+    "TakeProfit",
+    "StopLoss",
+    "DeltaRisk",
+    "IVCrush",
+    "IVPercentileExit",
+    "DTERoll",
+    "GammaRisk",
+    "TimeExit",
 ]
 
 
