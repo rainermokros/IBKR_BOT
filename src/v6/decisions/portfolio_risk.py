@@ -328,7 +328,7 @@ class PortfolioRiskCalculator:
 
         # Per-symbol Greek aggregation
         try:
-            symbol_greeks = df.groupby("symbol").agg(
+            symbol_greeks = df.group_by("symbol").agg(
                 [
                     pl.col("delta").sum().alias("delta"),
                     pl.col("gamma").sum().alias("gamma"),
@@ -391,7 +391,7 @@ class PortfolioRiskCalculator:
                 df_with_value = df.with_columns(
                     (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
                 )
-                symbol_exposure = df_with_value.groupby("symbol").agg(
+                symbol_exposure = df_with_value.group_by("symbol").agg(
                     pl.col("position_value").sum().alias("exposure")
                 )
                 if total_exposure > 0:
@@ -545,7 +545,7 @@ class PortfolioRiskCalculator:
                     )
                     total_exposure = df_with_value["position_value"].sum()
                     if total_exposure > 0:
-                        max_pos = df_with_value.groupby("symbol").agg(
+                        max_pos = df_with_value.group_by("symbol").agg(
                             pl.col("position_value").sum().alias("exposure")
                         )
                         for symbol, exposure in zip(
