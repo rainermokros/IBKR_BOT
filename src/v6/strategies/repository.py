@@ -354,6 +354,12 @@ class StrategyRepository:
                 pl.lit(datetime.now()).alias("fill_time")
             )
 
+        # If status is CLOSED, set close_time to now
+        if status == ExecutionStatus.CLOSED:
+            existing = existing.with_columns(
+                pl.lit(datetime.now()).alias("close_time")
+            )
+
         # Delete old record and write new one (Delta Lake doesn't support UPDATE directly)
         # In production, would use MERGE or partition-level operations
         # For now, we'll overwrite (simple but not optimal for concurrent writes)
