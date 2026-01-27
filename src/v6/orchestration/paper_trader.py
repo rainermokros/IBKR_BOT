@@ -40,6 +40,7 @@ from src.v6.config.paper_config import PaperTradingConfig
 from src.v6.decisions.engine import DecisionEngine
 from src.v6.execution.engine import OrderExecutionEngine
 from src.v6.risk import TradingCircuitBreaker
+from src.v6.risk.circuit_breaker import CircuitBreakerConfig
 from src.v6.strategies.builders import IronCondorBuilder
 from src.v6.strategies.repository import StrategyRepository
 from src.v6.utils.ib_connection import IBConnectionManager
@@ -128,8 +129,11 @@ class PaperTrader:
         portfolio_limiter = None  # Can be added later if needed
 
         circuit_breaker = TradingCircuitBreaker(
-            failure_threshold=3,
-            cooldown_seconds=300,
+            config=CircuitBreakerConfig(
+                failure_threshold=3,
+                failure_window_secs=60,
+                open_timeout_secs=300,
+            )
         )
 
         # Create execution engine with dry_run=True
