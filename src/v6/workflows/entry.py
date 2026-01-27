@@ -161,8 +161,7 @@ class EntryWorkflow:
         # Check 1: IV Rank conditions
         # - IV Rank >50: Good for selling premium (iron condors, credit spreads)
         # - IV Rank <25: Good for buying premium (debit spreads)
-        # TEMPORARY: Allow iv_rank >= 50 to test order execution
-        if iv_rank < 25 or iv_rank >= 50:
+        if iv_rank < 25 or iv_rank > 50:
             self.logger.debug(f"✓ IV Rank check passed: {iv_rank}")
         else:
             self.logger.info(f"✗ IV Rank check failed: {iv_rank} (not in entry range)")
