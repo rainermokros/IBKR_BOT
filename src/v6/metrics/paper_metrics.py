@@ -264,7 +264,7 @@ class PaperMetricsTracker:
             return {}
 
         # Group by exit reason and count
-        breakdown = df.groupby('exit_reason').agg(
+        breakdown = df.group_by('exit_reason').agg(
             pl.count('strategy_id').alias('count')
         ).sort('count', descending=True)
 
@@ -336,7 +336,9 @@ class PaperMetricsTracker:
 
         # Calculate Sharpe ratio
         excess_returns = returns - daily_rf
-        sharpe = excess_returns.mean() / excess_returns.std() if excess_returns.std() != 0 else 0.0
+        mean_return = excess_returns.mean()
+        std_return = excess_returns.std()
+        sharpe = mean_return / std_return if std_return and std_return != 0 else 0.0
 
         # Annualize (assuming 252 trading days per year)
         sharpe_annualized = sharpe * np.sqrt(252)
@@ -372,10 +374,13 @@ class PaperMetricsTracker:
         drawdown_abs = equity - running_max
 
         # Find maximum drawdown
-        max_dd_idx = np.argmin(drawdown)
+        max_dd_idx = int(np.argmin(drawdown))
         max_drawdown = abs(drawdown[max_dd_idx])
         max_drawdown_abs = abs(drawdown_abs[max_dd_idx])
         max_drawdown_date = equity_curve[max_dd_idx, 'date']
+        # Handle both datetime and scalar types
+        if hasattr(max_drawdown_date, 'item'):
+            max_drawdown_date = max_drawdown_date.item()
 
         return {
             'max_drawdown': max_drawdown,
