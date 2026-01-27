@@ -34,7 +34,8 @@ from loguru import logger
 
 from src.v6.alerts import AlertManager
 from src.v6.decisions.engine import DecisionEngine
-from src.v6.decisions.models import Decision
+from src.v6.decisions.models import Decision, DecisionAction, Urgency
+from src.v6.risk import TrailingStopConfig, TrailingStopManager, TrailingStopAction
 from src.v6.strategies.models import StrategyExecution
 from src.v6.strategies.repository import StrategyRepository
 
@@ -71,6 +72,7 @@ class PositionMonitoringWorkflow:
         decision_engine: DecisionEngine for decision evaluation
         alert_manager: AlertManager for alert generation
         strategy_repo: StrategyRepository for position data
+        trailing_stops: Optional TrailingStopManager for trailing stop management
         monitoring_interval: Seconds between monitoring cycles (default: 30)
     """
 
@@ -79,6 +81,7 @@ class PositionMonitoringWorkflow:
         decision_engine: DecisionEngine,
         alert_manager: AlertManager,
         strategy_repo: StrategyRepository,
+        trailing_stops: TrailingStopManager | None = None,
         monitoring_interval: int = 30,
     ):
         """
@@ -88,11 +91,13 @@ class PositionMonitoringWorkflow:
             decision_engine: DecisionEngine for decision evaluation
             alert_manager: AlertManager for alert generation
             strategy_repo: StrategyRepository for position data
+            trailing_stops: Optional TrailingStopManager for trailing stop management
             monitoring_interval: Seconds between monitoring cycles
         """
         self.decision_engine = decision_engine
         self.alert_manager = alert_manager
         self.strategy_repo = strategy_repo
+        self.trailing_stops = trailing_stops
         self.monitoring_interval = monitoring_interval
         self.logger = logger
 
@@ -183,6 +188,51 @@ class PositionMonitoringWorkflow:
         # For now, we'll create a mock snapshot from execution data
         snapshot = self._create_snapshot(execution)
 
+        # Update trailing stop (if enabled for this position)
+        # This happens BEFORE decision engine evaluation so trailing stop
+        # triggers take priority over other decision rules
+        if self.trailing_stops:
+            stop = self.trailing_stops.get_stop(strategy_execution_id)
+            if stop:
+                # Get current premium from snapshot
+                # Note: In production, this would be fetched from Greeks table
+                current_premium = snapshot.get("current_premium", execution.entry_params.get("premium_received", 0.0))
+
+                # Update trailing stop
+                new_stop, action = stop.update(current_premium)
+
+                if action == TrailingStopAction.TRIGGER:
+                    # Trailing stop triggered - create CLOSE decision immediately
+                    self.logger.warning(
+                        f"Trailing stop TRIGGERED for {strategy_execution_id[:8]}...: "
+                        f"stop={new_stop:.2f}, current={current_premium:.2f}"
+                    )
+
+                    return Decision(
+                        action=DecisionAction.CLOSE,
+                        reason=f"Trailing stop triggered at {new_stop:.2f} (current premium: {current_premium:.2f})",
+                        rule="TrailingStop",
+                        urgency=Urgency.IMMEDIATE,
+                        metadata={
+                            "stop_premium": new_stop,
+                            "current_premium": current_premium,
+                            "highest_premium": stop.highest_premium,
+                            "entry_premium": stop.entry_premium,
+                        },
+                    )
+
+                elif action == TrailingStopAction.ACTIVATE:
+                    self.logger.info(
+                        f"Trailing stop ACTIVATED for {strategy_execution_id[:8]}...: "
+                        f"stop={new_stop:.2f}"
+                    )
+
+                elif action == TrailingStopAction.UPDATE:
+                    self.logger.debug(
+                        f"Trailing stop UPDATED for {strategy_execution_id[:8]}...: "
+                        f"stop={new_stop:.2f}"
+                    )
+
         # Fetch market data
         # Note: In production, this would fetch from market data feed
         # For now, we'll use placeholder data
@@ -201,6 +251,43 @@ class PositionMonitoringWorkflow:
         # So we don't need to duplicate that here
 
         return decision
+
+    def enable_trailing_stop(
+        self,
+        execution_id: str,
+        entry_premium: float,
+        config: TrailingStopConfig | None = None,
+    ) -> None:
+        """
+        Enable trailing stop for a position.
+
+        Adds a trailing stop for the specified position. The trailing stop will
+        be automatically updated during position monitoring.
+
+        Args:
+            execution_id: Strategy execution ID
+            entry_premium: Entry premium for the position
+            config: Optional trailing stop configuration (uses default if None)
+
+        Raises:
+            RuntimeError: If TrailingStopManager not configured
+            ValueError: If trailing stop already exists for position
+
+        Example:
+            >>> monitoring.enable_trailing_stop(
+            ...     execution_id="abc123",
+            ...     entry_premium=100.0
+            ... )
+        """
+        if self.trailing_stops is None:
+            raise RuntimeError("TrailingStopManager not configured")
+
+        self.trailing_stops.add_trailing_stop(execution_id, entry_premium, config)
+
+        self.logger.info(
+            f"Enabled trailing stop for {execution_id[:8]}...: "
+            f"entry_premium={entry_premium:.2f}"
+        )
 
     async def start_monitoring_loop(self):
         """

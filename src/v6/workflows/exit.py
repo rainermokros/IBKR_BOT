@@ -47,6 +47,11 @@ from src.v6.strategies.models import (
 )
 from src.v6.strategies.repository import StrategyRepository
 
+try:
+    from src.v6.risk import TrailingStopManager
+except ImportError:
+    TrailingStopManager = None  # type: ignore
+
 logger = logger.bind(component="ExitWorkflow")
 
 
@@ -69,11 +74,13 @@ class ExitWorkflow:
     - OrderExecutionEngine for order placement
     - StrategyRepository for status updates
     - DecisionEngine for decision validation (optional)
+    - TrailingStopManager for trailing stop cleanup (optional)
 
     Attributes:
         execution_engine: OrderExecutionEngine for order placement
         decision_engine: DecisionEngine for decision validation (optional)
         strategy_repo: StrategyRepository for persistence
+        trailing_stops: Optional TrailingStopManager for trailing stop cleanup
     """
 
     def __init__(
@@ -81,6 +88,7 @@ class ExitWorkflow:
         execution_engine: OrderExecutionEngine,
         decision_engine: Optional[DecisionEngine] = None,
         strategy_repo: Optional[StrategyRepository] = None,
+        trailing_stops: Optional["TrailingStopManager"] = None,
     ):
         """
         Initialize exit workflow.
@@ -89,10 +97,12 @@ class ExitWorkflow:
             execution_engine: OrderExecutionEngine for order placement
             decision_engine: Optional DecisionEngine for decision validation
             strategy_repo: Optional StrategyRepository for status updates
+            trailing_stops: Optional TrailingStopManager for trailing stop cleanup
         """
         self.execution_engine = execution_engine
         self.decision_engine = decision_engine
         self.strategy_repo = strategy_repo
+        self.trailing_stops = trailing_stops
         self.logger = logger
 
     async def execute_exit_decision(
@@ -190,6 +200,17 @@ class ExitWorkflow:
 
             except Exception as e:
                 self.logger.error(f"Failed to update strategy status: {e}")
+
+        # Remove trailing stop if exists (for CLOSE and ROLL actions)
+        if result.success and self.trailing_stops:
+            if decision.action in (DecisionAction.CLOSE, DecisionAction.ROLL):
+                try:
+                    self.trailing_stops.remove_stop(strategy_execution_id)
+                    self.logger.debug(
+                        f"✓ Removed trailing stop for {strategy_execution_id[:8]}..."
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to remove trailing stop: {e}")
 
         return result
 
