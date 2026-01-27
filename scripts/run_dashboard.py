@@ -61,7 +61,9 @@ def main():
         sys.exit(1)
 
     # Build Streamlit command
+    # Set PYTHONPATH as environment variable for the subprocess
     cmd = [
+        f"PYTHONPATH={project_root}",
         "streamlit",
         "run",
         str(app_path),
@@ -95,8 +97,8 @@ def main():
     print()
 
     try:
-        # Launch Streamlit with PYTHONPATH set
-        subprocess.run(cmd, check=True, env=env)
+        # Launch Streamlit with PYTHONPATH set (use shell for env var expansion)
+        subprocess.run(" ".join(cmd), check=True, shell=True, env=env)
     except KeyboardInterrupt:
         print("\nDashboard stopped by user")
     except subprocess.CalledProcessError as e:
