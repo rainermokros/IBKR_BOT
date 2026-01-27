@@ -77,13 +77,25 @@ class DecisionEngine:
     - Track how often each rule triggers
     - Useful for analysis and optimization
 
+    **Alert Integration:**
+    - Optional AlertManager for automatic alert generation
+    - Alerts created for non-HOLD decisions
+
     Attributes:
         _rules: List of rules sorted by priority
         _stats: Dict tracking rule trigger counts
+        alert_manager: Optional AlertManager for alert generation
 
     Example:
         ```python
+        from src.v6.alerts import AlertManager
+
         engine = DecisionEngine()
+
+        # Optional: Add alert manager
+        alert_manager = AlertManager()
+        await alert_manager.initialize()
+        engine.alert_manager = alert_manager
 
         # Register rules dynamically
         engine.register_rule(CatastropheRule())
@@ -95,15 +107,17 @@ class DecisionEngine:
         ```
     """
 
-    def __init__(self, rules: Optional[list[Rule]] = None):
+    def __init__(self, rules: Optional[list[Rule]] = None, alert_manager=None):
         """
         Initialize decision engine.
 
         Args:
             rules: Optional list of rules to register immediately
+            alert_manager: Optional AlertManager for automatic alert generation
         """
         self._rules: list[Rule] = []
         self._stats: dict[str, int] = {}
+        self.alert_manager = alert_manager
 
         # Register initial rules if provided
         if rules:
@@ -156,6 +170,7 @@ class DecisionEngine:
         Evaluate all rules in priority order.
 
         First rule to trigger wins. Returns HOLD if no rules trigger.
+        Creates alert if AlertManager is configured and decision is not HOLD.
 
         Args:
             snapshot: Position snapshot with live Greeks and P&L
@@ -179,6 +194,18 @@ class DecisionEngine:
                         f"Rule triggered: {rule.name} (priority {rule.priority}) "
                         f"→ {decision.action.value}: {decision.reason}"
                     )
+
+                    # Create alert if alert_manager is configured
+                    if self.alert_manager and decision.action != DecisionAction.HOLD:
+                        try:
+                            alert = await self.alert_manager.create_alert(decision, snapshot)
+                            if alert:
+                                logger.info(
+                                    f"Alert created: {alert.alert_id[:8]}... "
+                                    f"({alert.type.value}, {alert.severity.value})"
+                                )
+                        except Exception as e:
+                            logger.error(f"Failed to create alert: {e}")
 
                     return decision
 
