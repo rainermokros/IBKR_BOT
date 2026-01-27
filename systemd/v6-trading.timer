@@ -1,0 +1,16 @@
+[Unit]
+Description=Timer for v6-trading periodic tasks (daily restart for stability)
+Requires=v6-trading.service
+
+[Timer]
+# Start 5 minutes after boot
+OnBootSec=5min
+
+# Restart every 24 hours (daily restart for stability)
+OnUnitActiveSec=24h
+
+# Accuracy window (can start within this time window)
+AccuracySec=1h
+
+[Install]
+WantedBy=timers.target

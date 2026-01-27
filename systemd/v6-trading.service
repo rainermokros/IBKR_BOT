@@ -1,0 +1,41 @@
+[Unit]
+Description=V6 Trading Bot - Main trading system
+After=network.target ib-gateway.service
+Requires=ib-gateway.service
+
+[Service]
+Type=simple
+User=trading
+Group=trading
+WorkingDirectory=/opt/v6-trading
+
+# Main trading script
+ExecStart=/usr/bin/python /opt/v6-trading/scripts/run_production.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Environment
+EnvironmentFile=/opt/v6-trading/.env
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v6-trading
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+# Graceful shutdown (wait for orders to fill)
+TimeoutStopSec=60
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

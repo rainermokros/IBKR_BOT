@@ -1,0 +1,25 @@
+[Unit]
+Description=Interactive Brokers Gateway
+After=network.target
+
+[Service]
+Type=forking
+User=trading
+Group=trading
+WorkingDirectory=/home/trading/Jts
+
+# IB Gateway startup script
+# Adjust path based on your IB Gateway installation
+ExecStart=/home/trading/Jts/ibgateway &
+
+# Restart policy
+Restart=on-failure
+RestartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ib-gateway
+
+[Install]
+WantedBy=multi-user.target

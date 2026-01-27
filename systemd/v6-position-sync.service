@@ -1,0 +1,33 @@
+[Unit]
+Description=V6 Trading Bot - Position synchronization
+After=network.target v6-trading.service
+Requires=v6-trading.service
+
+[Service]
+Type=simple
+User=trading
+Group=trading
+WorkingDirectory=/opt/v6-trading
+
+# Position sync script
+ExecStart=/usr/bin/python /opt/v6-trading/scripts/run_position_sync.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Environment
+EnvironmentFile=/opt/v6-trading/.env
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v6-position-sync
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

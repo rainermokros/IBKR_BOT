@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer for v6-health-check (periodic health monitoring)
+
+[Timer]
+# Run every 5 minutes
+OnCalendar=*:0/5
+
+# Accuracy window (can run within 30 seconds)
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

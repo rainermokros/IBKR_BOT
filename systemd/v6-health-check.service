@@ -1,0 +1,24 @@
+[Unit]
+Description=V6 Trading Bot - Health check
+After=network.target v6-trading.service
+
+[Service]
+Type=oneshot
+User=trading
+Group=trading
+WorkingDirectory=/opt/v6-trading
+
+# Health check script
+ExecStart=/usr/bin/python /opt/v6-trading/scripts/health_check.py
+
+# Environment
+EnvironmentFile=/opt/v6-trading/.env
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v6-health-check
+
+# Security
+NoNewPrivileges=true

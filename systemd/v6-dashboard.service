@@ -1,0 +1,32 @@
+[Unit]
+Description=V6 Trading Bot - Monitoring dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=trading
+Group=trading
+WorkingDirectory=/opt/v6-trading
+
+# Dashboard script (headless mode)
+ExecStart=/usr/bin/python /opt/v6-trading/scripts/run_dashboard.py --headless --port 8501
+
+# Restart policy (always restart dashboard)
+Restart=always
+RestartSec=5
+
+# Environment
+EnvironmentFile=/opt/v6-trading/.env
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v6-dashboard
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
