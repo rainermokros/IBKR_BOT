@@ -360,7 +360,7 @@ class PaperTrader:
         logger.info("[PAPER] Running exit cycle...")
 
         # Get all strategies
-        all_strategies = await self.strategy_repo.get_all_strategies()
+        all_strategies = await self.strategy_repo.get_open_strategies()
 
         exit_results = {}
         exited_count = 0
