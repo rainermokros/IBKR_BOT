@@ -243,15 +243,18 @@ def reconnect_ib() -> dict[str, Any]:
         - message: str - Status message
     """
     try:
-        from src.v6.utils.ib_connection import IBConnectionManager
+        # Note: IB connection is managed by the paper trading system
+        # This function just provides a button to indicate reconnect intent
+        # The paper trading system manages its own IB lifecycle
+        logger.info("IB reconnection requested by user via dashboard")
 
-        manager = IBConnectionManager()
-        manager.reconnect()
-
-        return {"success": True, "message": "IB reconnection initiated"}
+        return {
+            "success": True,
+            "message": "IB reconnection requested - restart paper trading system to reconnect"
+        }
     except Exception as e:
-        logger.error(f"Failed to reconnect IB: {e}")
-        return {"success": False, "message": f"Reconnection failed: {e}"}
+        logger.error(f"Failed to request IB reconnection: {e}")
+        return {"success": False, "message": f"Reconnection request failed: {e}"}
 
 
 def force_sync() -> dict[str, Any]:
