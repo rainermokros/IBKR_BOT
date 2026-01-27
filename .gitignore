@@ -39,6 +39,7 @@ env/
 
 # Delta Lake
 data/lake/_delta_log/
+tests/data/lake/
 
 # Testing
 .pytest_cache/
