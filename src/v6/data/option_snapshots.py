@@ -18,7 +18,7 @@ import polars as pl
 from deltalake import DeltaTable, write_deltalake
 from loguru import logger
 
-from src.v6.core.market_data_fetcher import OptionContract
+from src.v6.core.models import OptionContract
 
 
 class OptionSnapshotsTable:
