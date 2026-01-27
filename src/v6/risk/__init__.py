@@ -5,6 +5,7 @@ This module provides portfolio-level risk management functionality including:
 - Risk limits configuration
 - Portfolio limit checking
 - Portfolio limit exceeded exceptions
+- Circuit breaker for system-level fault tolerance
 
 Example:
     >>> from src.v6.risk import RiskLimitsConfig, PortfolioLimitExceeded
@@ -24,13 +25,36 @@ Example:
     ... )
 """
 
+from src.v6.risk.circuit_breaker import (
+    CircuitBreakerConfig,
+    CircuitBreakerOpenException,
+    CircuitState,
+    TradingCircuitBreaker,
+)
 from src.v6.risk.models import PortfolioLimitExceededError, RiskLimitsConfig
+from src.v6.risk.trailing_stop import (
+    TrailingStop,
+    TrailingStopAction,
+    TrailingStopConfig,
+    TrailingStopManager,
+)
 
 # Alias for backward compatibility
 PortfolioLimitExceeded = PortfolioLimitExceededError
 
 __all__ = [
+    # Models
     "RiskLimitsConfig",
     "PortfolioLimitExceededError",
     "PortfolioLimitExceeded",  # Alias
+    # Circuit breaker
+    "CircuitState",
+    "CircuitBreakerConfig",
+    "CircuitBreakerOpenException",
+    "TradingCircuitBreaker",
+    # Trailing stop
+    "TrailingStop",
+    "TrailingStopAction",
+    "TrailingStopConfig",
+    "TrailingStopManager",
 ]

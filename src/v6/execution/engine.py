@@ -46,6 +46,17 @@ from src.v6.strategies.models import (
 )
 from src.v6.utils.ib_connection import IBConnectionManager
 
+# Optional circuit breaker for fault tolerance
+try:
+    from src.v6.risk import (
+        CircuitBreakerConfig,
+        CircuitBreakerOpenException,
+        TradingCircuitBreaker,
+    )
+    CIRCUIT_BREAKER_AVAILABLE = True
+except ImportError:
+    CIRCUIT_BREAKER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +69,7 @@ class OrderExecutionEngine:
     Attributes:
         ib_conn: IB connection manager
         dry_run: If True, simulate orders without placing them
+        circuit_breaker: Optional circuit breaker for fault tolerance
         logger: Logger instance
     """
 
@@ -65,6 +77,7 @@ class OrderExecutionEngine:
         self,
         ib_conn: IBConnectionManager,
         dry_run: bool = False,
+        circuit_breaker: Optional[TradingCircuitBreaker] = None,
     ):
         """
         Initialize order execution engine.
@@ -72,14 +85,19 @@ class OrderExecutionEngine:
         Args:
             ib_conn: IB connection manager
             dry_run: If True, simulate orders without placing them
+            circuit_breaker: Optional circuit breaker for system-level fault tolerance
         """
         self.ib_conn = ib_conn
         self.ib = ib_conn.ib
         self.dry_run = dry_run
+        self.circuit_breaker = circuit_breaker
         self.logger = logger
 
         if dry_run:
             self.logger.warning("DRY RUN MODE - No actual orders will be placed")
+
+        if circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+            self.logger.info("OrderExecutionEngine initialized with circuit breaker protection")
 
     async def place_order(
         self,
@@ -99,11 +117,27 @@ class OrderExecutionEngine:
         Raises:
             ValueError: If order validation fails
             ConnectionError: If IB connection fails
+            CircuitBreakerOpenException: If circuit breaker is OPEN
         """
         if order.status != OrderStatus.PENDING_SUBMIT:
             raise ValueError(
                 f"Order must be PENDING_SUBMIT to place, got {order.status.value}"
             )
+
+        # Check circuit breaker state (pre-trade guard)
+        if self.circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+            allowed, reason = self.circuit_breaker.is_trading_allowed()
+            if not allowed:
+                self.logger.error(f"Order BLOCKED by circuit breaker: {reason}")
+                raise CircuitBreakerOpenException(
+                    f"Order blocked by circuit breaker: {reason}",
+                    state=self.circuit_breaker.state,
+                    failure_count=len(self.circuit_breaker.failures),
+                    failures_in_window=self.circuit_breaker.failures,
+                )
+            elif reason:
+                # Circuit is HALF_OPEN, log warning but allow trade
+                self.logger.warning(f"Order allowed with circuit breaker: {reason}")
 
         self.logger.info(
             f"Placing order: {order.action.value} {order.quantity}x "
@@ -119,6 +153,11 @@ class OrderExecutionEngine:
             order.status = OrderStatus.FILLED
             order.filled_quantity = order.quantity
             order.filled_at = datetime.now()
+
+            # Record success (closes circuit if in HALF_OPEN)
+            if self.circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+                self.circuit_breaker.record_success()
+
             return order
 
         # Ensure IB connection
@@ -135,11 +174,21 @@ class OrderExecutionEngine:
             order.conid = contract.conId
 
             self.logger.info(f"Order placed successfully: {trade.order.orderId}")
+
+            # Record success (closes circuit if in HALF_OPEN)
+            if self.circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+                self.circuit_breaker.record_success()
+
             return order
 
         except Exception as e:
             self.logger.error(f"Failed to place order: {e}")
             order.status = OrderStatus.REJECTED
+
+            # Record failure (may open circuit)
+            if self.circuit_breaker and CIRCUIT_BREAKER_AVAILABLE:
+                self.circuit_breaker.record_failure()
+
             raise
 
     async def cancel_order(self, order_id: str) -> bool:
