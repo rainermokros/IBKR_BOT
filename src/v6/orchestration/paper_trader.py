@@ -37,10 +37,13 @@ from loguru import logger
 
 from src.v6.alerts import AlertManager
 from src.v6.config.paper_config import PaperTradingConfig
+from src.v6.core.market_data_fetcher import OptionDataFetcher
+from src.v6.data.option_snapshots import OptionSnapshotsTable
 from src.v6.decisions.engine import DecisionEngine
 from src.v6.execution.engine import OrderExecutionEngine
 from src.v6.risk import TradingCircuitBreaker
 from src.v6.risk.circuit_breaker import CircuitBreakerConfig
+from src.v6.scripts.data_collector import DataCollector
 from src.v6.strategies.builders import IronCondorBuilder
 from src.v6.strategies.repository import StrategyRepository
 from src.v6.utils.ib_connection import IBConnectionManager
@@ -118,6 +121,26 @@ class PaperTrader:
             client_id=config.ib_client_id,
         )
 
+        # Create OptionSnapshotsTable for market data storage
+        self.option_snapshots_table = OptionSnapshotsTable(
+            table_path=f"{config.data_dir}/option_snapshots",
+        )
+
+        # Create OptionDataFetcher for real-time market data
+        self.option_fetcher = OptionDataFetcher(
+            ib_conn=self.ib_conn,
+            option_snapshots_table=self.option_snapshots_table,
+            symbols=config.allowed_symbols,
+        )
+
+        # Create DataCollector for continuous data collection
+        self.data_collector = DataCollector(
+            ib_conn=self.ib_conn,
+            option_snapshots_table=self.option_snapshots_table,
+            symbols=config.allowed_symbols,
+            collection_interval=300,  # 5 minutes
+        )
+
         # Create StrategyRepository for paper trading
         self.strategy_repo = strategy_repo or StrategyRepository(
             table_path=f"{config.data_dir}/strategy_executions",
@@ -136,10 +159,10 @@ class PaperTrader:
             )
         )
 
-        # Create execution engine with dry_run=True
+        # Create execution engine with dry_run from config
         execution_engine = OrderExecutionEngine(
             ib_conn=self.ib_conn,
-            dry_run=True,  # Always dry run for paper trading
+            dry_run=self.config.dry_run,  # Use config value (can be False for paper trading!)
             circuit_breaker=circuit_breaker,
         )
 
@@ -216,6 +239,10 @@ class PaperTrader:
         await self.ib_conn.connect()
         logger.info(f"[PAPER] Connected to IB at {self.config.ib_host}:{self.config.ib_port}")
 
+        # Start data collector for continuous market data collection
+        await self.data_collector.start()
+        logger.info("[PAPER] Data collector started (collecting every 5 minutes)")
+
         # Start position sync
         # Note: Position sync is handled by IBConnectionManager
         logger.info("[PAPER] Position synchronization started")
@@ -267,14 +294,13 @@ class PaperTrader:
 
         # For each allowed symbol, check entry conditions
         for symbol in self.config.allowed_symbols:
+            # Fetch real market data from data collector
+            market_data = await self.data_collector.get_latest_market_data(symbol)
+
             # Check entry signal
             should_enter = await self.entry_workflow.evaluate_entry_signal(
                 symbol=symbol,
-                market_data={
-                    "iv_rank": 50,  # TODO: Fetch from IB
-                    "vix": 18,  # TODO: Fetch from VIX
-                    "underlying_trend": "neutral",  # TODO: Calculate
-                }
+                market_data=market_data
             )
 
             if should_enter:
@@ -444,11 +470,15 @@ class PaperTrader:
         """
         Stop paper trading orchestrator.
 
-        Disconnects from IB and cleans up resources.
+        Stops data collector, disconnects from IB, and cleans up resources.
         """
         logger.info("[PAPER] Stopping PaperTrader...")
         self.running = False
         self._shutdown_event.set()
+
+        # Stop data collector
+        await self.data_collector.stop()
+        logger.info("[PAPER] Data collector stopped")
 
         # Disconnect from IB
         await self.ib_conn.disconnect()
