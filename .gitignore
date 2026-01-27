@@ -52,6 +52,9 @@ logs/
 # Production configuration
 config/production.yaml
 
+# Paper trading configuration
+config/paper_trading.yaml
+
 # Backups
 backups/
 *.tar.gz
