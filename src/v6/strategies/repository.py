@@ -23,7 +23,7 @@ import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
 from loguru import logger
 
-from v6.strategies.models import (
+from src.v6.strategies.models import (
     Strategy,
     StrategyExecution,
     LegExecution,

@@ -11,7 +11,7 @@ Usage:
 """
 
 # Pydantic models for external IB data validation
-from v6.models.ib_models import (
+from src.v6.models.ib_models import (
     OptionRight,
     PositionStatus,
     Greeks,
@@ -22,7 +22,7 @@ from v6.models.ib_models import (
 )
 
 # Dataclasses for internal state management
-from v6.models.internal_state import (
+from src.v6.models.internal_state import (
     CircuitState,
     PositionState,
     PortfolioState,
