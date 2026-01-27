@@ -41,7 +41,7 @@ def check_ib_connection() -> dict[str, Any]:
             "last_update": status.get("last_update", datetime.now()),
             "disconnected_at": status.get("disconnected_at"),
             "host": status.get("host", "localhost"),
-            "port": status.get("port", 7497),
+            "port": status.get("port", 4002),
             "client_id": status.get("client_id", 1),
         }
     except Exception as e:
@@ -52,7 +52,7 @@ def check_ib_connection() -> dict[str, Any]:
             "last_update": datetime.now(),
             "disconnected_at": datetime.now(),
             "host": "localhost",
-            "port": 7497,
+            "port": 4002,
             "client_id": 1,
         }
 
