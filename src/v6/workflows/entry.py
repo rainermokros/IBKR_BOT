@@ -52,6 +52,7 @@ from src.v6.execution.models import (
     OrderType,
     TimeInForce,
 )
+from src.v6.risk.models import PortfolioLimitExceededError
 from src.v6.strategies.builders import StrategyBuilder
 from src.v6.strategies.models import (
     ExecutionStatus,
@@ -62,6 +63,9 @@ from src.v6.strategies.models import (
     StrategyType,
 )
 from src.v6.strategies.repository import StrategyRepository
+
+# Alias for backward compatibility
+PortfolioLimitExceeded = PortfolioLimitExceededError
 
 logger = logger.bind(component="EntryWorkflow")
 
@@ -99,6 +103,7 @@ class EntryWorkflow:
         strategy_repo: StrategyRepository,
         max_portfolio_delta: float = 0.3,
         max_positions_per_symbol: int = 5,
+        portfolio_limits=None,
     ):
         """
         Initialize entry workflow.
@@ -110,6 +115,7 @@ class EntryWorkflow:
             strategy_repo: StrategyRepository for persistence
             max_portfolio_delta: Maximum net portfolio delta allowed
             max_positions_per_symbol: Maximum positions per symbol
+            portfolio_limits: Optional PortfolioLimitsChecker for risk validation
         """
         self.decision_engine = decision_engine
         self.execution_engine = execution_engine
@@ -117,6 +123,7 @@ class EntryWorkflow:
         self.strategy_repo = strategy_repo
         self.max_portfolio_delta = max_portfolio_delta
         self.max_positions_per_symbol = max_positions_per_symbol
+        self.portfolio_limits = portfolio_limits
         self.logger = logger
 
     async def evaluate_entry_signal(
@@ -239,6 +246,41 @@ class EntryWorkflow:
             raise ValueError(f"Strategy validation failed: {strategy}")
 
         self.logger.info(f"✓ Strategy built: {strategy}")
+
+        # Step 1.5: Check portfolio limits (if checker provided)
+        if self.portfolio_limits:
+            # Calculate position delta (sum of SELL legs)
+            # Note: This is a simplified calculation - actual delta depends on Greeks
+            position_delta = sum(
+                leg.quantity if leg.action == LegAction.SELL else -leg.quantity
+                for leg in strategy.legs
+            )
+
+            # Calculate position value (rough estimate)
+            # Use strike * quantity * 100 multiplier for options
+            position_value = sum(
+                abs(leg.quantity) * leg.strike * 100
+                for leg in strategy.legs
+            )
+
+            # Check portfolio limits
+            allowed, reason = await self.portfolio_limits.check_entry_allowed(
+                new_position_delta=position_delta,
+                symbol=strategy.symbol,
+                position_value=position_value,
+            )
+
+            if not allowed:
+                self.logger.warning(f"Entry REJECTED by portfolio limits: {reason}")
+                raise PortfolioLimitExceededError(
+                    message=f"Portfolio limit exceeded: {reason}",
+                    limit_type="portfolio_limits",
+                    current_value=0.0,
+                    limit_value=0.0,
+                    symbol=strategy.symbol,
+                )
+
+            self.logger.info("✓ Entry allowed by portfolio limits")
 
         # Step 2: Create StrategyExecution
         execution_id = str(uuid4())
