@@ -48,3 +48,11 @@ htmlcov/
 # Logs
 logs/
 *.log
+
+# Production configuration
+config/production.yaml
+
+# Backups
+backups/
+*.tar.gz
+*.tar.gz.sha256
