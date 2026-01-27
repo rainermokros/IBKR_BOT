@@ -15,7 +15,7 @@ Build a next-generation automated options trading system with advanced automatio
 - Better risk-adjusted returns than v5 (lower drawdown, better Sharpe ratio)
 - Full visibility into all system operations in real-time
 
-**Journey:** Architecture & Infrastructure → Position Synchronization → Decision Rules Engine → Strategy Execution → Risk Management → Monitoring Dashboard → Testing & Deployment
+**Journey:** Architecture → Position Sync → Decision Engine → Strategy Execution → Risk Management → Dashboard → Testing → Futures Data
 
 ## Domain Expertise
 
@@ -42,136 +42,93 @@ Build a next-generation automated options trading system with advanced automatio
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Architecture & Infrastructure** - Delta Lake setup, IB connection layer, base models
-- [ ] **Phase 2: Position Synchronization** - Real-time IB streaming, Delta Lake persistence, reconciliation
-- [ ] **Phase 3: Decision Rules Engine** - 12 priority-based decision rules, risk calculations, alerts
-- [ ] **Phase 4: Strategy Execution** - Automated strategy builders, order execution, entry/exit workflows
-- [ ] **Phase 5: Risk Management** - Portfolio controls, circuit breakers, trailing stops, volatility adjustments
+- [x] **Phase 1: Architecture & Infrastructure** - Delta Lake setup, IB connection layer, base models
+- [x] **Phase 2: Position Synchronization** - Real-time IB streaming, Delta Lake persistence, reconciliation
+- [x] **Phase 2.1: Hybrid Slot Conservation** - Fix streaming slot usage with queue-based approach
+- [x] **Phase 3: Decision Rules Engine** - 12 priority-based decision rules, risk calculations, alerts
+- [x] **Phase 4: Strategy Execution** - Automated strategy builders, order execution, entry/exit workflows
+- [x] **Phase 5: Risk Management** - Portfolio controls, circuit breakers, trailing stops, volatility adjustments
 - [x] **Phase 6: Monitoring Dashboard** - Real-time display, Greeks visualization, alert management
-- [ ] **Phase 7: Testing & Deployment** - Integration testing, paper trading, production deployment
+- [x] **Phase 7: Testing & Deployment** - Integration testing, paper trading, production deployment
+- [ ] **Phase 8: Futures Data Collection** - ES/NQ/RTY futures for entry signal enhancement
 
 ## Phase Details
 
-### Phase 1: Architecture & Infrastructure
+### Phase 1: Architecture & Infrastructure ✅
 **Goal**: Set up Delta Lake, IB connection layer, base models, and configuration management
 **Depends on**: Nothing (first phase)
-**Research**: Likely (Delta Lake setup, ib_async patterns, project structure)
-**Research topics**: Delta Lake Python API, ib_async best practices, project organization patterns
+**Research**: Complete
 **Plans**: 4 plans
+**Status**: Complete
 
-Plans:
-- [ ] 01-01: Setup project structure and development environment (Python 3.11+, dependencies, testing framework)
-- [ ] 01-02: Design and implement Delta Lake schema (positions, legs, Greeks, transactions, time-travel)
-- [ ] 01-03: Implement IB connection manager (ib_async, auto-reconnect, circuit breaker, heartbeat)
-- [ ] 01-04: Create base models and data structures (OptionLeg, Position, Strategy, Greeks, Portfolio)
-
-### Phase 2: Position Synchronization
+### Phase 2: Position Synchronization ✅
 **Goal**: Hybrid position synchronization (stream active, queue non-essential)
 **Depends on**: Phase 1
-**Research**: Likely (real-time streaming patterns, data synchronization, reconciliation strategies)
-**Research topics**: Real-time data sync patterns, IB position streaming, idempotent Delta Lake writes
-**Plans**: 3 plans + 1 urgent fix phase
+**Research**: Complete
+**Plans**: 3 plans + 1 urgent fix phase (2.1)
+**Status**: Complete
 
-**✅ HYBRID APPROACH IMPLEMENTED:**
-- **Active contracts:** Streamed via reqMktData() (real-time, consume slots)
-- **Non-essential contracts:** Queued for batch processing (0 slots)
-- **StrategyRegistry:** Tracks which contracts are active
-- **PositionQueue:** Delta Lake backed queue
-- **QueueWorker:** Background daemon processes queue every 5 seconds
-- **Result:** Scales to thousands of contracts (~10 slots for active strategies)
+**Phase 2.1: Hybrid Slot Conservation** ✅
+**Goal**: Fix streaming slot usage with StrategyRegistry and PositionQueue
+**Status**: Complete (4/4 plans)
 
-Plans:
-- [x] 02-01: Implement hybrid position polling (stream active, queue non-essential, 30s interval)
-- [x] 02-02: Delta Lake persistence layer (idempotent writes, ACID transactions, time-travel queries)
-- [x] 02-03: Reconciliation logic (IB ↔ local state, conflict resolution, data validation)
-
-**✅ Phase 2.1: Hybrid Slot Conservation** (Urgent Fix - 4 plans)
-- [x] 2.1-01: Create StrategyRegistry and PositionQueue
-- [x] 2.1-02: Redesign IBPositionStreamer with hybrid logic
-- [x] 2.1-03: Implement QueueWorker background daemon
-- [x] 2.1-04: Integration testing and documentation
-
-**✅ Phase 2 COMPLETE** - All plans finished, streaming slot issue resolved
-
-**Phase 2 Accomplishments:**
-- ✅ Hybrid position synchronization (stream active, queue non-essential)
-- ✅ Streaming slot conservation (~10 slots vs 100+ slots)
-- ✅ Delta Lake persistence with idempotent writes
-- ✅ Reconciliation with periodic full sync
-- ✅ Scales to thousands of contracts
-- ✅ Persistent queue survives reboots (Delta Lake backed)
-
-### Phase 3: Decision Rules Engine
+### Phase 3: Decision Rules Engine ✅
 **Goal**: Implement 12 priority-based decision rules, risk calculations, and alert generation
 **Depends on**: Phase 2
-**Research**: Likely (rule engine patterns, options risk calculations, decision prioritization)
-**Research topics**: Options risk management best practices, rule engine design, alert patterns
+**Research**: Complete
 **Plans**: 4 plans
+**Status**: Complete
 
-Plans:
-- [ ] 03-01: Implement rule evaluation framework (priority queue, rule execution, state management)
-- [ ] 03-02: Portfolio-level risk calculations (delta, gamma, theta, vega, portfolio exposure)
-- [ ] 03-03: Implement 12 priority-based decision rules (catastrophe, trailing stop, time exit, take profit, stop loss, delta/gamma risk, IV crush, DTE roll, VIX exit, portfolio limits)
-- [ ] 03-04: Alert generation and management (alert types, severity, notifications, history)
-
-### Phase 4: Strategy Execution ✅ COMPLETE
+### Phase 4: Strategy Execution ✅
 **Goal**: Automated strategy builders, order execution, and entry/exit workflows
 **Depends on**: Phase 3
 **Research**: Complete
 **Plans**: 3 plans
+**Status**: Complete
 
-Plans:
-- [x] 04-01: Implement strategy builders (Iron Condor, vertical spreads, custom strategies)
-- [x] 04-02: IB order execution engine (order placement, OCA groups, bracket orders, error handling)
-- [x] 04-03: Entry and exit workflows (signal generation, position entry, monitoring, position exit)
-
-**Status**: Complete (43 tests passing, full automation pipeline)
-
-### Phase 5: Risk Management
+### Phase 5: Risk Management ✅
 **Goal**: Portfolio-level controls, circuit breakers, trailing stops, and volatility adjustments
 **Depends on**: Phase 4
-**Research**: Likely (portfolio risk management, circuit breaker patterns, trailing stop algorithms)
-**Research topics**: Options portfolio risk management, circuit breaker implementations, trailing stop strategies
+**Research**: Complete
 **Plans**: 3 plans
+**Status**: Complete
 
-Plans:
-- [ ] 05-01: Portfolio-level controls (position limits, correlation checks, concentration limits)
-- [ ] 05-02: Circuit breakers and auto-hedge (risk thresholds, automatic position reduction, hedging strategies)
-- [ ] 05-03: Advanced exit rules (trailing stops, volatility-based adjustments, time-based exits)
-
-### Phase 6: Monitoring Dashboard
+### Phase 6: Monitoring Dashboard ✅
 **Goal**: Real-time position display, Greeks visualization, alert management, and system health
 **Depends on**: Phase 5
-**Research**: Likely (dashboard frameworks, real-time data visualization, monitoring patterns)
-**Research topics**: Python dashboard frameworks (Streamlit, Dash), real-time visualization patterns, monitoring best practices
+**Research**: Complete
 **Plans**: 3 plans
+**Status**: Complete
 
-Plans:
-- [x] 06-01: Build real-time monitoring dashboard (position display, Greeks, P/L, portfolio health)
-- [x] 06-02: Alert management UI (alert history, active alerts, alert configuration)
-- [x] 06-03: System health monitoring (IB connection status, data freshness, system metrics)
-
-**✅ Phase 6 COMPLETE** - All plans finished, dashboard running at http://localhost:8501
-
-### Phase 7: Testing & Deployment
+### Phase 7: Testing & Deployment ✅
 **Goal**: Integration testing, paper trading validation, and production deployment
 **Depends on**: Phase 6
-**Research**: Complete (testing strategies, deployment patterns, runbook creation)
+**Research**: Complete
 **Plans**: 3 plans
+**Status**: Complete
 
-Plans:
-- [x] 07-01: Integration testing framework (IB test accounts, test scenarios, automated tests)
-- [x] 07-02: Paper trading validation (simulated trading, performance tracking, strategy validation)
-- [x] 07-03: Production deployment (deployment automation, monitoring setup, runbooks, documentation)
+### Phase 8: Futures Data Collection 🆕
+**Goal**: Add futures data collection (ES, NQ, RTY) for enhanced entry signal prediction
+**Depends on**: Phase 7
+**Research**: Unlikely (IB futures data is standard)
+**Research topics**: IB futures contract specifications, continuous futures data, correlation analysis
+**Plans**: TBD
 
-**✅ Phase 7 COMPLETE** - All plans finished, V6 trading system production-ready
+**Purpose:**
+- Collect futures data as leading indicators for market direction
+- Enable analysis of futures vs spot relationships
+- Provide early signals for entry decisions (futures trade 23h/day vs 6.5h for equities)
+- Test predictive value after 2-4 weeks of data accumulation
+
+**Futures to Track:**
+- **ES** (E-mini S&P 500) - Leading indicator for SPY
+- **NQ** (E-mini Nasdaq 100) - Leading indicator for QQQ
+- **RTY** (E-mini Russell 2000) - Leading indicator for IWM
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 2.1 → 3 → 4 → 5 → 6 → 7
-
-Note: Phase 2.1 is urgent fix inserted after Phase 2.
+Phases execute in numeric order: 1 → 2 → 2.1 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -183,6 +140,7 @@ Note: Phase 2.1 is urgent fix inserted after Phase 2.
 | 5. Risk Management | 3/3 | ✅ Complete | 2026-01-26 |
 | 6. Monitoring Dashboard | 3/3 | ✅ Complete | 2026-01-27 |
 | 7. Testing & Deployment | 3/3 | ✅ Complete | 2026-01-27 |
+| 8. Futures Data Collection | 0/TBD | Not started | - |
 
 ## V5 vs V6 Key Differences
 
@@ -194,3 +152,4 @@ Note: Phase 2.1 is urgent fix inserted after Phase 2.
 | Monitoring | Basic dashboard | Enhanced with real-time alerts |
 | ML Integration | Included | v1 rule-based, ML added later |
 | Focus | Data collection + trading | Automation + risk management + visibility |
+| Futures Data | No | Yes (ES, NQ, RTY for leading indicators) |

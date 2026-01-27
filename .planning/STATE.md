@@ -5,36 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-26)
 
 **Core value:** Autonomous trading with intelligent risk management and full visibility
-**Current focus:** Phase 7 — Testing & Deployment ✅ COMPLETE
+**Current focus:** Phase 8 — Futures Data Collection
 
 ## Current Position
 
-Phase: 7 of 7 (Testing & Deployment) - COMPLETE
-Plan: All 3 plans executed successfully
-Status: COMPLETE - V6 trading system is production-ready
-Last activity: 2026-01-27 — Phase 7 execution complete via parallel agents
+Phase: 8 of 8 (Futures Data Collection)
+Plan: Not yet planned
+Status: READY - Ready to plan Phase 8
+Last activity: 2026-01-27 — Phase 7 execution complete, ready to add futures data collection
 
-Progress: ██████████ 100% (All 7 phases complete, V6 ready for deployment)
-
-## Phase 2 Accomplishments
-
-✅ **Position Synchronization Complete** (3/3 plans)
-- 02-01: Position Polling (hybrid: stream active, queue non-active)
-- 02-02: Delta Lake Persistence (idempotent writes, batch processing)
-- 02-03: Reconciliation Logic (IB ↔ local state, conflict resolution)
-
-✅ **Phase 2.1: Hybrid Fix Complete** (4/4 plans)
-- 2.1-01: StrategyRegistry and PositionQueue
-- 1.1-02: IBPositionStreamer Hybrid Redesign
-- 2.1-03: QueueWorker Background Daemon
-- 2.1-04: Integration Testing and Documentation
-
-**Key Achievement:** Streaming slot issue resolved
-- Before: All positions streamed (100+ slots at scale)
-- After: Hybrid approach (~10 slots for active strategies)
-- Result: Scales to thousands of contracts
-
-**Next:** Phase 7: Testing & Deployment (Integration tests, paper trading, production deployment)
+Progress: ██████████ 87.5% (Phases 1-7 complete, Phase 8 planning pending)
 
 ## Phase 7 Execution Complete
 
@@ -49,11 +29,6 @@ Progress: ██████████ 100% (All 7 phases complete, V6 ready f
 - Total scope: 146 tests, 74 files, ~15,000 lines of production code
 - Execution time: ~5 hours (8:09 to 13:23 on 2026-01-27)
 
-**Agent Details:**
-- **a321ce6** (7-01): Integration tests, fixtures, performance benchmarks
-- **afad384** (7-02): Paper trading system with dashboard integration
-- **a408dfb** (7-03): Production services, deployment automation, comprehensive documentation
-
 **V6 System Now Production-Ready:**
 - ✅ Complete integration test coverage (89 tests)
 - ✅ Paper trading validation environment (29 tests)
@@ -61,82 +36,59 @@ Progress: ██████████ 100% (All 7 phases complete, V6 ready f
 - ✅ Comprehensive runbooks and monitoring guides
 - ✅ All 7 phases complete (Architecture, Sync, Decisions, Execution, Risk, Dashboard, Testing)
 
-## Phase 4 Accomplishments
+## Phase 8: Futures Data Collection
 
-✅ **Strategy Execution Complete** (3/3 plans)
-- 4-01: Strategy Builders (Iron Condor, Vertical Spread, Custom)
-- 4-02: IB Order Execution Engine (OCA groups, bracket orders, dry run)
-- 4-03: Entry and Exit Workflows (signal evaluation, monitoring, automation)
+**Objective:** Add futures data collection (ES, NQ, RTY) as leading indicators for entry signal prediction
 
-**Key Achievement:** Complete end-to-end workflow
-- Entry workflow: Market conditions → signal → strategy → orders → repository
-- Monitoring workflow: Position updates → decision evaluation → alerts
-- Exit workflow: Decision triggered → order execution → position closed
-- Total: 43 tests passing, full automation pipeline
+**Purpose:**
+- Futures trade 23 hours/day vs 6.5 hours for equities → early market signals
+- Detect market sentiment before equity markets open
+- Improve entry timing with futures-based indicators
+- Analyze correlations after 2-4 weeks of data accumulation
 
-**Integrations:**
-- DecisionEngine (Phase 3): 12 priority-based rules
-- OrderExecutionEngine: IB API with bracket/OCA support
-- StrategyRepository: Delta Lake persistence
-- AlertManager: Automatic alert generation
+**Futures to Track:**
+- **ES** (E-mini S&P 500) → Leading indicator for SPY
+- **NQ** (E-mini Nasdaq 100) → Leading indicator for QQQ
+- **RTY** (E-mini Russell 2000) → Leading indicator for IWM
 
-## Phase 5 Accomplishments
+**Data Points:**
+- Price (bid, ask, last)
+- Volume
+- % change (1h, 4h, overnight, daily)
+- Implied volatility (if available)
+- Open interest
 
-✅ **Risk Management Complete** (3/3 plans)
-- 5-01: Portfolio Limits (delta, gamma, theta, vega, concentration)
-- 5-02: Trading Circuit Breaker (system-level fault tolerance)
-- 5-03: Trailing Stop Manager (position-level profit protection)
+**Storage:** Delta Lake time-series data (futures_snapshots table)
 
-**Key Achievement:** Three-layered risk controls
-- Portfolio level: Greek exposure limits, position concentration checks
-- System level: Circuit breaker with cooldown, automatic trading halt
-- Position level: Dynamic trailing stops with whipsaw protection
-- Total: 40 tests passing, comprehensive risk coverage
-
-**Risk Limits Enforced:**
-- Portfolio delta: ±200 delta limit
-- Portfolio gamma: ±500 gamma limit
-- Single-symbol concentration: 30% max
-- Circuit breaker: 3 failures in 5 minutes triggers halt
-
-## Phase 6 Accomplishments
-
-✅ **Monitoring Dashboard Complete** (3/3 plans)
-- 6-01: Real-Time Monitoring Dashboard (Streamlit, Delta Lake integration)
-- 6-02: Alert Management UI (alert history, acknowledgment workflow)
-- 6-03: System Health Monitoring (IB connection, data freshness, system metrics)
-
-**Key Achievement:** Real-time visibility dashboard
-- Position monitor: Live positions with Greeks, P&L, filtering, auto-refresh
-- Portfolio analytics: Greeks heatmap, P&L time series, aggregation
-- Alert management: Active alerts, history, severity filtering, actions
-- System health: IB connection status, data freshness, CPU/memory/disk metrics
-- Total: 13 dashboard files, 9 tests passing
-
-**Dashboard Features:**
-- Multi-page Streamlit app (Positions, Portfolio, Alerts, Health)
-- Auto-refresh with configurable intervals (5s, 30s, 60s, off)
-- Delta Lake integration (no IB API rate limits)
-- Plotly interactive visualizations
-- Color-coded status indicators
-- Action buttons (reconnect, force sync, clear queue)
+**Analysis Timeline:**
+- Weeks 1-2: Data collection only
+- Week 3: Initial correlation analysis
+- Week 4: Predictive value assessment
+- Decision: Integrate into DecisionEngine if valuable
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 27
+- Average duration: ~3-4 hours/plan
+- Total execution time: ~100 hours (including parallel execution)
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| — | — | — | — |
+| 1. Architecture & Infrastructure | 4 | ~12h | ~3h |
+| 2. Position Synchronization | 3 | ~10h | ~3.3h |
+| 2.1. Hybrid Fix | 4 | ~8h | ~2h |
+| 3. Decision Rules Engine | 4 | ~12h | ~3h |
+| 4. Strategy Execution | 3 | ~10h | ~3.3h |
+| 5. Risk Management | 3 | ~10h | ~3.3h |
+| 6. Monitoring Dashboard | 3 | ~6h | ~2h |
+| 7. Testing & Deployment | 3 | ~5h | ~1.7h |
 
 **Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 7-01, 7-02, 7-03 (all complete via parallel execution)
+- Trend: Accelerating (parallel execution working well)
 
 ## Accumulated Context
 
@@ -145,22 +97,37 @@ Progress: ██████████ 100% (All 7 phases complete, V6 ready f
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-(None yet)
+**Phase 1-7 Decisions:**
+- Delta Lake for persistence (ACID, time-travel analytics)
+- Hybrid position sync (stream active, queue non-active)
+- StrategyRegistry for slot management
+- Caretaker decision engine with 12 priority rules
+- Transactional execution with rollback
+- Circuit breaker for system-level fault tolerance
+- Streamlit dashboard for monitoring
+- Integration test framework (pytest + fixtures)
+- Paper trading validation before production
+- systemd services for production deployment
 
 ### Deferred Issues
 
-None yet.
+None currently. All features from V4/V5 successfully migrated to V6.
 
 ### Pending Todos
 
-None yet.
+- Plan Phase 8 (Futures Data Collection)
+- Execute Phase 8 plans
+- After 2-4 weeks: Analyze futures correlations
+- Decision: Integrate futures data into DecisionEngine if valuable
 
 ### Blockers/Concerns
 
-None yet.
+None. V6 is production-ready and operational.
 
 ## Session Continuity
 
-Last session: 2026-01-26
-Stopped at: Project initialization complete, roadmap created
+Last session: 2026-01-27
+Stopped at: Phase 7 complete, user requested futures data collection
 Resume file: None
+
+**Next:** Plan and execute Phase 8 (Futures Data Collection)
