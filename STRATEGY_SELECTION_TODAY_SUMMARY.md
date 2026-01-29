@@ -3,6 +3,8 @@
 **Date:** 2026-01-28
 **Purpose:** Demonstrate V6 decision engine logic with realistic market scenarios
 
+**IMPORTANT:** VIX is a single index (CBOE Volatility Index). At any given moment, there is only ONE VIX value that applies to all assets. The test scenarios below show **independent "what if" cases** - each demonstrates what the system would do IF the market were in that particular state. In a real production run, all assets would share the same VIX value, but could have different IV ranks.
+
 ---
 
 ## Executive Summary
@@ -29,13 +31,17 @@ The V6 Trading Bot uses a **3-factor decision matrix** to select strategies:
 
 ## Test Results: 4 Realistic Scenarios
 
+**IMPORTANT NOTE:** These are **independent "what if" scenarios** to demonstrate the decision logic. In reality, VIX is a single index and can only have ONE value at any given moment. Each scenario shows what WOULD happen IF the market were in that state.
+
+---
+
 ### Scenario 1: Bullish Uptrend with Low Volatility
 
 **Market Conditions:**
 - SPY at $580.50 (+1.2% on the day)
 - 5-day MA = $578, 20-day MA = $570 (uptrend)
 - IV Rank = 35 (LOW)
-- VIX = 14.5
+- VIX = 14.5 (hypothetical - if market were calm)
 - IV Change = -2% (stable)
 
 **Selected Strategy:** ✅ **Bull Put Spread (Credit)**
@@ -124,6 +130,27 @@ The V6 Trading Bot uses a **3-factor decision matrix** to select strategies:
 - ❌ Not credit spreads: Extreme IV + rising vol = too risky for naked short options
 
 **Note:** High urgency - extreme volatility requires immediate action. Long puts provide convexity (unlimited upside if volatility explodes further).
+
+---
+
+## What a REAL Production Run Would Look Like
+
+In reality, at any given moment, there's **ONE VIX value** for all assets. However, each asset (SPY, QQQ, IWM) can have different **IV ranks**.
+
+**Example:** Let's say right now VIX = 18.0 (calm market)
+
+| Asset | IV Rank | IV Level | Market Outlook | Selected Strategy |
+|-------|---------|----------|----------------|-------------------|
+| SPY | 42 | LOW | Bullish | Bull Put Spread (Credit) |
+| QQQ | 38 | LOW | Neutral | Iron Condor (Credit) |
+| IWM | 45 | LOW | Bearish | Bear Call Spread (Credit) |
+
+**Key Point:** All three assets see the same VIX (18.0), but have different:
+- IV ranks (based on their own option prices)
+- Market outlooks (based on their price action)
+- Selected strategies (based on outlook + IV level)
+
+This is how it would work in production - single VIX, multiple IV ranks, multiple strategies.
 
 ---
 
