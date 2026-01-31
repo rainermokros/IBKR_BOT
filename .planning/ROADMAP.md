@@ -17,97 +17,20 @@ Build a next-generation automated options trading system with advanced automatio
 
 **Journey:** Architecture → Position Sync → Decision Engine → Strategy Execution → Risk Management → Dashboard → Testing → Futures Data
 
-## Domain Expertise
+## Completed Milestones
 
-- ~/.claude/skills/expertise/ib-async-api/SKILL.md (IB connection library, patterns, error handling)
-- ~/.claude/skills/expertise/ib-data/SKILL.md (IB data collection, historical data, market data)
-- ~/.claude/skills/expertise/ib-order-manager/SKILL.md (IB order execution, bracket orders, OCA patterns)
-- ~/.claude/skills/expertise/position-manager/SKILL.md (Position tracking, Greeks, P&L management)
-- ~/.claude/skills/expertise/quant-options/SKILL.md (Options strategies, Greeks, risk management)
-- ~/.claude/skills/expertise/delta-lake-lakehouse/SKILL.md (Delta Lake storage, lakehouse architecture, Parquet files)
+- ✅ **v1.0 MVP** — Phases 1-7 (shipped 2026-01-31) — [See full details →](milestones/v1.0-ROADMAP.md)
 
-## Key Architectural Decisions
+## Current Milestone
 
-- **Python 3.11+**: User requirement, ecosystem maturity
-- **IB API (ib_async)**: Best Python IB library, battle-tested in v5
-- **Delta Lake**: ACID transactions, time-travel for analytics
-- **Clean Slate Architecture**: Avoid v5 complexity, incorporate lessons learned
-- **Rule-based v1**: Proven approach from v5, ML added later
+### v1.1 Futures Data Enhancement (Planned)
 
-## Phases
-
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
-
-Decimal phases appear between their surrounding integers in numeric order.
-
-- [x] **Phase 1: Architecture & Infrastructure** - Delta Lake setup, IB connection layer, base models
-- [x] **Phase 2: Position Synchronization** - Real-time IB streaming, Delta Lake persistence, reconciliation
-- [x] **Phase 2.1: Hybrid Slot Conservation** - Fix streaming slot usage with queue-based approach
-- [x] **Phase 3: Decision Rules Engine** - 12 priority-based decision rules, risk calculations, alerts
-- [x] **Phase 4: Strategy Execution** - Automated strategy builders, order execution, entry/exit workflows
-- [x] **Phase 5: Risk Management** - Portfolio controls, circuit breakers, trailing stops, volatility adjustments
-- [x] **Phase 6: Monitoring Dashboard** - Real-time display, Greeks visualization, alert management
-- [x] **Phase 7: Testing & Deployment** - Integration testing, paper trading, production deployment
-- [ ] **Phase 8: Futures Data Collection** - ES/NQ/RTY futures for entry signal enhancement
+- [ ] Phase 8: Futures Data Collection (0/TBD plans)
 
 ## Phase Details
 
-### Phase 1: Architecture & Infrastructure ✅
-**Goal**: Set up Delta Lake, IB connection layer, base models, and configuration management
-**Depends on**: Nothing (first phase)
-**Research**: Complete
-**Plans**: 4 plans
-**Status**: Complete
-
-### Phase 2: Position Synchronization ✅
-**Goal**: Hybrid position synchronization (stream active, queue non-essential)
-**Depends on**: Phase 1
-**Research**: Complete
-**Plans**: 3 plans + 1 urgent fix phase (2.1)
-**Status**: Complete
-
-**Phase 2.1: Hybrid Slot Conservation** ✅
-**Goal**: Fix streaming slot usage with StrategyRegistry and PositionQueue
-**Status**: Complete (4/4 plans)
-
-### Phase 3: Decision Rules Engine ✅
-**Goal**: Implement 12 priority-based decision rules, risk calculations, and alert generation
-**Depends on**: Phase 2
-**Research**: Complete
-**Plans**: 4 plans
-**Status**: Complete
-
-### Phase 4: Strategy Execution ✅
-**Goal**: Automated strategy builders, order execution, and entry/exit workflows
-**Depends on**: Phase 3
-**Research**: Complete
-**Plans**: 3 plans
-**Status**: Complete
-
-### Phase 5: Risk Management ✅
-**Goal**: Portfolio-level controls, circuit breakers, trailing stops, and volatility adjustments
-**Depends on**: Phase 4
-**Research**: Complete
-**Plans**: 3 plans
-**Status**: Complete
-
-### Phase 6: Monitoring Dashboard ✅
-**Goal**: Real-time position display, Greeks visualization, alert management, and system health
-**Depends on**: Phase 5
-**Research**: Complete
-**Plans**: 3 plans
-**Status**: Complete
-
-### Phase 7: Testing & Deployment ✅
-**Goal**: Integration testing, paper trading validation, and production deployment
-**Depends on**: Phase 6
-**Research**: Complete
-**Plans**: 3 plans
-**Status**: Complete
-
 ### Phase 8: Futures Data Collection 🆕
+
 **Goal**: Add futures data collection (ES, NQ, RTY) for enhanced entry signal prediction
 **Depends on**: Phase 7
 **Research**: Unlikely (IB futures data is standard)
@@ -126,9 +49,6 @@ Decimal phases appear between their surrounding integers in numeric order.
 - **RTY** (E-mini Russell 2000) - Leading indicator for IWM
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 2.1 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -153,3 +73,20 @@ Phases execute in numeric order: 1 → 2 → 2.1 → 3 → 4 → 5 → 6 → 7 �
 | ML Integration | Included | v1 rule-based, ML added later |
 | Focus | Data collection + trading | Automation + risk management + visibility |
 | Futures Data | No | Yes (ES, NQ, RTY for leading indicators) |
+
+## Domain Expertise
+
+- ~/.claude/skills/expertise/ib-async-api/SKILL.md (IB connection library, patterns, error handling)
+- ~/.claude/skills/expertise/ib-data/SKILL.md (IB data collection, historical data, market data)
+- ~/.claude/skills/expertise/ib-order-manager/SKILL.md (IB order execution, bracket orders, OCA patterns)
+- ~/.claude/skills/expertise/position-manager/SKILL.md (Position tracking, Greeks, P&L management)
+- ~/.claude/skills/expertise/quant-options/SKILL.md (Options strategies, Greeks, risk management)
+- ~/.claude/skills/expertise/delta-lake-lakehouse/SKILL.md (Delta Lake storage, lakehouse architecture, Parquet files)
+
+## Key Architectural Decisions
+
+- **Python 3.11+**: User requirement, ecosystem maturity
+- **IB API (ib_async)**: Best Python IB library, battle-tested in v5
+- **Delta Lake**: ACID transactions, time-travel for analytics
+- **Clean Slate Architecture**: Avoid v5 complexity, incorporate lessons learned
+- **Rule-based v1**: Proven approach from v5, ML added later
