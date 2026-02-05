@@ -59,8 +59,10 @@ class BackfillWorker:
         """
         try:
             # Ensure connection
-            if not self.ib.isConnected():
+            if not self.ib or not self.ib.isConnected():
                 logger.info("Connecting to IBKR...")
+                if not self.ib:
+                    self.ib = IB()
                 await self.ib.connectAsync(host="127.0.0.1", port=4002, clientId=self.client_id, timeout=10)
                 await asyncio.sleep(1)
 
@@ -157,6 +159,18 @@ class BackfillWorker:
         """
         logger.info(f"🔄 Processing {item.symbol} from {item.target_time} (attempt {item.retry_count + 1}/{item.max_retries})")
 
+        # Ensure IB connection
+        if not self.ib or not self.ib.isConnected():
+            logger.warning("IB connection lost, reconnecting...")
+            try:
+                if not self.ib:
+                    self.ib = IB()
+                await self.ib.connectAsync(host="127.0.0.1", port=4002, clientId=self.client_id, timeout=10)
+                logger.success("✓ Reconnected to IB Gateway")
+            except Exception as e:
+                logger.error(f"✗ Failed to reconnect: {e}")
+                return False
+
         try:
             # Calculate strikes (same logic as main collector)
             # Use current price as approximation (historical price not available)
@@ -238,12 +252,19 @@ class BackfillWorker:
         logger.info("BACKFILL WORKER - BATCH MODE")
         logger.info("=" * 70)
 
+        # Initialize IB connection
         self.ib = IB()
-        await self.ib.connectAsync(host="127.0.0.1", port=4002, clientId=self.client_id, timeout=10)
+        try:
+            logger.info(f"Connecting to IB Gateway with clientId={self.client_id}...")
+            await self.ib.connectAsync(host="127.0.0.1", port=4002, clientId=self.client_id, timeout=10)
+            logger.success(f"✓ Connected to IB Gateway")
+        except Exception as e:
+            logger.error(f"✗ Failed to connect to IB Gateway: {e}")
+            return
 
         try:
             # Get pending items
-            items = self.queue.get_pending_items(limit=max_items)
+            items = self.queue.get_pending(limit=max_items)
 
             if not items:
                 logger.info("No pending items in queue")
@@ -256,21 +277,24 @@ class BackfillWorker:
 
             for item in items:
                 # Mark as in progress
-                # Note: We'd need item.id, but QueueItem doesn't have it
-                # For now, just process
+                self.queue.mark_in_progress(item.symbol, item.target_time)
+
                 try:
                     success = await self.process_queue_item(item)
                     processed += 1
 
                     if success:
                         succeeded += 1
-                        # Mark as completed (would need item ID)
+                        # Mark as completed
+                        self.queue.mark_completed(item.symbol, item.target_time)
                     else:
-                        # Mark as failed (would need item ID)
-                        pass
+                        # Increment retry count
+                        self.queue.increment_retry(item.symbol, item.target_time)
 
                 except Exception as e:
                     logger.error(f"Error processing item: {e}")
+                    # Increment retry count on error
+                    self.queue.increment_retry(item.symbol, item.target_time)
 
             logger.info(f"\n{'='*70}")
             logger.info(f"BACKFILL BATCH COMPLETE")
