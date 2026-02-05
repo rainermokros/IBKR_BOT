@@ -17,9 +17,9 @@ import polars as pl
 from ib_async import IB, Contract, Option
 from loguru import logger
 
-from src.v6.data.option_snapshots import OptionSnapshotsTable
-from src.v6.core.models import OptionContract
-from src.v6.utils.ib_connection import IBConnectionManager, CircuitBreaker
+from v6.data.option_snapshots import OptionSnapshotsTable
+from v6.core.models import OptionContract
+from v6.utils.ib_connection import IBConnectionManager, CircuitBreaker
 
 
 # Note: OptionContract is now in src/v6/core/models.py to avoid circular imports

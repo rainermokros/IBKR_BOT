@@ -53,7 +53,7 @@ def main():
 
     # Get project root (assumes script is in scripts/ directory)
     project_root = Path(__file__).parent.parent
-    app_path = project_root / "src" / "v6" / "dashboard" / "app.py"
+    app_path = project_root / "src" / "v6" / "system_monitor" / "dashboard" / "app.py"
 
     # Check if app.py exists
     if not app_path.exists():

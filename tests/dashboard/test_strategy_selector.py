@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import polars as pl
 
-from v6.dashboard.components.strategy_selector import StrategySelectorDashboard
+from v6.system_monitor.dashboard.components.strategy_selector import StrategySelectorDashboard
 from v6.strategies.regime_aware_selector import (
     RegimeAwareSelector,
     RegimeDetector,
@@ -27,7 +27,7 @@ from v6.strategies.regime_aware_selector import (
 )
 from v6.strategies.performance_tracker import StrategyPerformanceTracker
 from v6.strategies.models import Strategy, LegSpec, OptionRight, LegAction, StrategyType
-from v6.data.market_regimes_persistence import MarketRegimesTable
+from v6.system_monitor.data.market_regimes_persistence import MarketRegimesTable
 
 
 @pytest.fixture

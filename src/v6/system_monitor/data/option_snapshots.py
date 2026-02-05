@@ -114,11 +114,17 @@ class OptionSnapshotsTable:
         if len(df) == 0:
             return
 
+        # Add strike_partition column if not present
+        if "strike_partition" not in df.columns:
+            df = df.with_columns(
+                (pl.col("strike").cast(int) // 10 * 10).alias("strike_partition")
+            )
+
         write_deltalake(
             str(self.table_path),
             df,
             mode="append",
-            partition_by=["symbol", "yearmonth"]
+            partition_by=["strike_partition", "symbol"]
         )
         logger.info(f"✓ Appended {len(df)} rows to option_snapshots table")
 
@@ -140,11 +146,8 @@ class OptionSnapshotsTable:
         # Convert to Polars DataFrame
         data = []
         for contract in contracts:
-            # Extract yearmonth from expiry (YYYYMMDD format)
-            try:
-                yearmonth = int(contract.expiry[:6])  # First 6 digits: YYYYMM
-            except (ValueError, IndexError):
-                yearmonth = 0
+            # Calculate strike_partition (group strikes by 10s: 650-659 -> 650)
+            strike_partition = int(contract.strike // 10 * 10)
 
             # Determine if option is active (has volume or open interest)
             is_active = (contract.volume > 0) or (contract.open_interest and contract.open_interest > 0)
@@ -153,6 +156,7 @@ class OptionSnapshotsTable:
                 'timestamp': contract.timestamp,
                 'symbol': contract.symbol,
                 'strike': contract.strike,
+                'strike_partition': strike_partition,  # For partitioning
                 'expiry': contract.expiry,
                 'right': contract.right,
                 'bid': contract.bid,

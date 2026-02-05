@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from datetime import datetime, timedelta
 
-from v6.dashboard.data.alerts import (
+from v6.system_monitor.dashboard.data.alerts import (
     filter_alerts,
     get_alert_summary,
     load_alerts,

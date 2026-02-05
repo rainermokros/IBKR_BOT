@@ -13,7 +13,7 @@ Exit codes:
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, time
 
 import httpx
 import psutil
@@ -34,15 +34,37 @@ def check_ib_connection() -> tuple[bool, str]:
         async def check():
             ib = IB()
             try:
-                await ib.connectAsync(host="127.0.0.1", port=7497, clientId=999, timeout=5)
-                await ib.disconnect()
+                await ib.connectAsync(host="127.0.0.1", port=4002, clientId=999, timeout=5)
+                # Successfully connected
+                ib.disconnect()
                 return True, "IB connection OK"
             except Exception as e:
                 return False, f"IB connection failed: {e}"
 
-        return asyncio.run(check())
+        result = asyncio.run(check())
+        return result
     except Exception as e:
         return False, f"IB check error: {e}"
+
+
+def is_market_hours() -> bool:
+    """
+    Check if current time is during market hours (9:30 AM - 4:00 PM ET, weekdays).
+
+    Returns:
+        True if during market hours, False otherwise
+    """
+    now = datetime.now()
+    # Weekend check
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+
+    # Time check (9:30 AM - 4:00 PM)
+    market_open = time(9, 30)
+    market_close = time(16, 0)
+    current_time = now.time()
+
+    return market_open <= current_time <= market_close
 
 
 def check_position_sync() -> tuple[bool, str]:
@@ -55,29 +77,45 @@ def check_position_sync() -> tuple[bool, str]:
     try:
         # Check last sync time from Delta Lake
         from deltalake import DeltaTable
-        from pathlib import Path
+        import polars as pl
 
-        delta_path = Path("data/lake/position_updates")
+        delta_path = "data/lake/position_updates"
         if not DeltaTable.is_deltatable(delta_path):
             return True, "Position sync: No data yet (first run)"
 
         dt = DeltaTable(delta_path)
-        last_update = dt.history().select("timestamp").sort("timestamp", descending=True).first()
 
-        if last_update is None:
+        # Read the table to get last update
+        df = pl.read_delta(delta_path)
+
+        if len(df) == 0:
             return True, "Position sync: No data yet (first run)"
+
+        # Get last timestamp
+        last_update = df.select(pl.col("timestamp").max()).item()
 
         # Calculate lag
         now = datetime.now()
-        last_update_time = datetime.fromisoformat(last_update["timestamp"])
-        lag_seconds = (now - last_update_time).total_seconds()
+        lag_seconds = (now - last_update).total_seconds()
 
-        if lag_seconds < 300:  # 5 minutes
-            return True, f"Position sync: OK (lag: {lag_seconds:.0f}s)"
-        elif lag_seconds < 600:  # 10 minutes
-            return False, f"Position sync: Degraded (lag: {lag_seconds:.0f}s)"
+        # Use different thresholds based on market hours
+        if is_market_hours():
+            # Stricter during market hours
+            ok_threshold = 300  # 5 minutes
+            degraded_threshold = 600  # 10 minutes
         else:
-            return False, f"Position sync: Failed (lag: {lag_seconds:.0f}s)"
+            # More lenient during pre/post-market
+            ok_threshold = 1800  # 30 minutes
+            degraded_threshold = 3600  # 60 minutes
+
+        market_status = "market hours" if is_market_hours() else "pre/post-market"
+
+        if lag_seconds < ok_threshold:
+            return True, f"Position sync: OK (lag: {lag_seconds:.0f}s, {market_status})"
+        elif lag_seconds < degraded_threshold:
+            return False, f"Position sync: Degraded (lag: {lag_seconds:.0f}s, {market_status})"
+        else:
+            return False, f"Position sync: Failed (lag: {lag_seconds:.0f}s, {market_status})"
 
     except Exception as e:
         return False, f"Position sync check error: {e}"
@@ -150,31 +188,42 @@ def main() -> int:
     logger.info("=" * 60)
 
     checks = [
-        ("IB Connection", check_ib_connection),
-        ("Position Sync", check_position_sync),
-        ("Dashboard", check_dashboard),
-        ("System Resources", check_system_resources),
+        ("IB Connection", check_ib_connection, True),  # Critical
+        ("Position Sync", check_position_sync, True),  # Critical
+        ("Dashboard", check_dashboard, False),  # Optional (monitoring only)
+        ("System Resources", check_system_resources, True),  # Critical
     ]
 
     results = []
+    optional_results = []
     critical_failures = 0
 
-    for name, check_func in checks:
+    for name, check_func, is_critical in checks:
         logger.info(f"Checking {name}...")
         try:
             healthy, message = check_func()
-            results.append((name, healthy, message))
 
             if healthy:
                 logger.success(f"✓ {message}")
+                if is_critical:
+                    results.append((name, healthy, message))
+                else:
+                    optional_results.append((name, healthy, message))
             else:
                 logger.warning(f"⚠ {message}")
-                if name in ["IB Connection"]:
-                    critical_failures += 1
+                if is_critical:
+                    results.append((name, healthy, message))
+                    if name in ["IB Connection"]:
+                        critical_failures += 1
+                else:
+                    optional_results.append((name, healthy, message))
         except Exception as e:
             logger.error(f"✗ {name} check failed: {e}")
-            results.append((name, False, str(e)))
-            critical_failures += 1
+            if is_critical:
+                results.append((name, False, str(e)))
+                critical_failures += 1
+            else:
+                optional_results.append((name, False, str(e)))
 
     # Print summary
     logger.info("=" * 60)
@@ -185,7 +234,14 @@ def main() -> int:
         status = "✓" if healthy else "✗"
         logger.info(f"{status} {name}: {message}")
 
-    # Determine exit code
+    if optional_results:
+        logger.info("-" * 60)
+        logger.info("Optional Checks (for monitoring only):")
+        for name, healthy, message in optional_results:
+            status = "✓" if healthy else "✗"
+            logger.info(f"{status} {name}: {message}")
+
+    # Determine exit code (based on critical checks only)
     if critical_failures > 0:
         logger.error("Health check: UNHEALTHY (critical failures)")
         return 2
