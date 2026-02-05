@@ -25,7 +25,7 @@ Main Collector (every 5 min)          Backfill Worker (every 10 min)
 
 ### 1. Collection Queue (`v6/src/v6/data/collection_queue.py`)
 
-**Purpose:** SQLite-based persistent queue for tracking failed collections
+**Purpose:** Delta Lake-based persistent queue for tracking failed collections
 
 **Key Features:**
 - Persists failed collection attempts

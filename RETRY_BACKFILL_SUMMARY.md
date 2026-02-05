@@ -9,7 +9,7 @@ Added comprehensive retry logic and backfill queue management to the option snap
 ### 1. Collection Queue Manager
 **File:** `v6/src/v6/data/collection_queue.py`
 
-- SQLite-based persistent queue for failed collections
+- Delta Lake-based persistent queue for failed collections
 - Tracks retry count, error types, and status
 - Automatically excludes Error 200 (contract doesn't exist)
 - Provides query interface for backfill worker

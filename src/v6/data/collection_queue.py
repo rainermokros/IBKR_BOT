@@ -5,19 +5,19 @@ Tracks failed collection attempts and manages backfill queue.
 Provides persistence for retry logic and backfill processing.
 
 Key features:
-- SQLite-based queue for failed collection windows
+- Delta Lake-based queue for failed collection windows
 - Tracks symbol, timestamp, error type, retry count
 - Excludes Error 200 (expected - contract doesn't exist)
 - Provides query interface for backfill worker
 """
 
-import sqlite3
-import json
+import polars as pl
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from loguru import logger
+from deltalake import DeltaTable, write_deltalake
 
 
 @dataclass
@@ -33,69 +33,88 @@ class QueueItem:
     status: str = 'pending'  # pending, in_progress, completed, failed
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON storage."""
-        d = asdict(self)
-        d['target_time'] = self.target_time.isoformat()
-        d['attempt_time'] = self.attempt_time.isoformat()
-        return d
+        """Convert to dictionary for Delta Lake storage."""
+        return {
+            'symbol': self.symbol,
+            'target_time': self.target_time.isoformat(),
+            'attempt_time': self.attempt_time.isoformat(),
+            'error_type': self.error_type,
+            'error_message': self.error_message,
+            'retry_count': self.retry_count,
+            'max_retries': self.max_retries,
+            'status': self.status
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> 'QueueItem':
         """Create from dictionary."""
-        data['target_time'] = datetime.fromisoformat(data['target_time'])
-        data['attempt_time'] = datetime.fromisoformat(data['attempt_time'])
-        return cls(**data)
+        # Handle both dict and object access (Polars rows)
+        target_time = data.get('target_time')
+        attempt_time = data.get('attempt_time')
+
+        if isinstance(target_time, str):
+            target_time = datetime.fromisoformat(target_time)
+        if isinstance(attempt_time, str):
+            attempt_time = datetime.fromisoformat(attempt_time)
+
+        return cls(
+            symbol=data['symbol'],
+            target_time=target_time,
+            attempt_time=attempt_time,
+            error_type=data['error_type'],
+            error_message=data['error_message'],
+            retry_count=data['retry_count'],
+            max_retries=data['max_retries'],
+            status=data['status']
+        )
 
 
 class CollectionQueue:
     """
-    Manages queue of failed collection attempts for backfill.
+    Manages the backfill queue using Delta Lake.
 
-    Uses SQLite for persistence and concurrent access safety.
+    Provides persistent storage for failed collection attempts,
+    tracks retry counts, and excludes Error 200 (contract not found).
     """
 
-    def __init__(self, db_path: str = "data/lake/collection_queue.db"):
+    def __init__(self, table_path: str = 'data/lake/collection_queue'):
         """
-        Initialize collection queue.
+        Initialize the collection queue.
 
         Args:
-            db_path: Path to SQLite database file
+            table_path: Path to Delta Lake table
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+        self.table_path = table_path
+        self._ensure_table_exists()
 
-    def _init_db(self):
-        """Create database schema if not exists."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS collection_queue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    target_time TEXT NOT NULL,
-                    attempt_time TEXT NOT NULL,
-                    error_type TEXT NOT NULL,
-                    error_message TEXT,
-                    retry_count INTEGER DEFAULT 0,
-                    max_retries INTEGER DEFAULT 5,
-                    status TEXT DEFAULT 'pending',
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
+    def _ensure_table_exists(self):
+        """Create Delta Lake table if it doesn't exist."""
+        table_path = Path(self.table_path)
 
-            # Index for faster queries
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_status_time
-                ON collection_queue(status, target_time)
-            """)
+        if not table_path.exists():
+            logger.info(f"Creating collection queue table at {self.table_path}")
 
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_symbol_status
-                ON collection_queue(symbol, status)
-            """)
+            # Create empty table with schema
+            empty_df = pl.DataFrame({
+                'symbol': pl.String,
+                'target_time': pl.String,
+                'attempt_time': pl.String,
+                'error_type': pl.String,
+                'error_message': pl.String,
+                'retry_count': pl.Int32,
+                'max_retries': pl.Int32,
+                'status': pl.String,
+                'created_at': pl.String
+            }).schema
 
-            conn.commit()
+            # Write empty schema
+            write_deltalake(
+                self.table_path,
+                schema=empty_df,
+                mode='overwrite'
+            )
+
+            logger.success(f"✓ Created collection queue table")
 
     def add_failure(
         self,
@@ -108,205 +127,259 @@ class CollectionQueue:
         """
         Add a failed collection to the queue.
 
+        Skip Error 200 - these are expected (contract doesn't exist).
+
         Args:
-            symbol: ETF symbol (SPY, QQQ, IWM)
-            target_time: When this collection was scheduled
-            error_type: Type of error (timeout, connection, etc.)
-            error_message: Error details
+            symbol: Underlying symbol
+            target_time: When collection should have happened
+            error_type: Type of error
+            error_message: Error message
             max_retries: Maximum retry attempts
 
         Returns:
-            Queue item ID if added, None if skipped (e.g., Error 200)
+            Item ID if added, None if skipped
         """
         # Skip Error 200 - expected, don't retry
         if "Error 200" in error_message or error_type == "contract_not_found":
             logger.debug(f"Skipping Error 200 for {symbol} at {target_time}")
             return None
 
-        # Check if already queued for this time window
-        with sqlite3.connect(self.db_path) as conn:
-            existing = conn.execute("""
-                SELECT id FROM collection_queue
-                WHERE symbol = ? AND target_time = ? AND status != 'completed'
-            """, (symbol, target_time.isoformat())).fetchone()
+        attempt_time = datetime.now()
 
-            if existing:
-                logger.debug(f"Already queued: {symbol} at {target_time}")
-                return existing[0]
+        # Create new item
+        item = QueueItem(
+            symbol=symbol,
+            target_time=target_time,
+            attempt_time=attempt_time,
+            error_type=error_type,
+            error_message=error_message,
+            retry_count=0,
+            max_retries=max_retries,
+            status='pending'
+        )
 
-            # Add new queue item
-            cursor = conn.execute("""
-                INSERT INTO collection_queue
-                (symbol, target_time, attempt_time, error_type, error_message, max_retries)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                symbol,
-                target_time.isoformat(),
-                datetime.now().isoformat(),
-                error_type,
-                error_message,
-                max_retries
-            ))
-            conn.commit()
+        # Write to Delta Lake
+        new_data = pl.DataFrame({
+            'symbol': [item.symbol],
+            'target_time': [item.target_time.isoformat()],
+            'attempt_time': [item.attempt_time.isoformat()],
+            'error_type': [item.error_type],
+            'error_message': [item.error_message],
+            'retry_count': [item.retry_count],
+            'max_retries': [item.max_retries],
+            'status': [item.status],
+            'created_at': [datetime.now().isoformat()]
+        })
 
-            logger.warning(f"📝 Queued retry for {symbol} at {target_time} ({error_type})")
-            return cursor.lastrowid
+        write_deltalake(
+            self.table_path,
+            new_data,
+            mode='append'
+        )
 
-    def get_pending_items(self, limit: int = 10) -> List[QueueItem]:
+        logger.debug(f"Added {symbol} {target_time} to queue ({error_type})")
+        return 1
+
+    def get_pending(self, limit: int = 100) -> List[QueueItem]:
         """
-        Get pending items for backfill, ordered by target time.
+        Get pending items from queue.
 
         Args:
-            limit: Maximum items to return
+            limit: Maximum number of items to return
 
         Returns:
-            List of QueueItems ready for retry
+            List of QueueItem objects
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT * FROM collection_queue
-                WHERE status = 'pending'
-                  AND retry_count < max_retries
-                  AND target_time >= datetime('now', '-7 days')
-                ORDER BY target_time ASC
-                LIMIT ?
-            """, (limit,)).fetchall()
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
 
-            items = []
-            for row in rows:
-                items.append(QueueItem(
-                    symbol=row['symbol'],
-                    target_time=datetime.fromisoformat(row['target_time']),
-                    attempt_time=datetime.fromisoformat(row['attempt_time']),
-                    error_type=row['error_type'],
-                    error_message=row['error_message'],
-                    retry_count=row['retry_count'],
-                    max_retries=row['max_retries'],
-                    status=row['status']
-                ))
+            # Filter for pending items
+            pending = df.filter(
+                (pl.col('status') == 'pending') &
+                (pl.col('retry_count') < pl.col('max_retries'))
+            ).sort('target_time').head(limit)
 
-            return items
+            return [QueueItem.from_dict(row) for row in pending.to_dicts()]
+        except Exception as e:
+            logger.warning(f"No pending items in queue: {e}")
+            return []
 
-    def mark_in_progress(self, item_id: int):
-        """Mark queue item as being processed."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                UPDATE collection_queue
-                SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (item_id,))
-            conn.commit()
-
-    def mark_completed(self, item_id: int):
-        """Mark queue item as successfully completed."""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                UPDATE collection_queue
-                SET status = 'completed', updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (item_id,))
-            conn.commit()
-            logger.success(f"✓ Backfill completed for queue item {item_id}")
-
-    def mark_failed(self, item_id: int, error_message: str):
+    def mark_in_progress(self, symbol: str, target_time: datetime):
         """
-        Mark queue item as failed and increment retry count.
+        Mark item as in progress.
 
         Args:
-            item_id: Queue item ID
-            error_message: New error message
+            symbol: Underlying symbol
+            target_time: Target collection time
         """
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if should be permanently failed
-            item = conn.execute("""
-                SELECT retry_count, max_retries FROM collection_queue WHERE id = ?
-            """, (item_id,)).fetchone()
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
 
-            if item and item[0] + 1 >= item[1]:
-                # Max retries reached
-                conn.execute("""
-                    UPDATE collection_queue
-                    SET status = 'failed',
-                        retry_count = retry_count + 1,
-                        error_message = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                """, (error_message, item_id))
-                conn.commit()
-                logger.error(f"❌ Max retries reached for queue item {item_id}")
-            else:
-                # Increment retry count, reset to pending
-                conn.execute("""
-                    UPDATE collection_queue
-                    SET status = 'pending',
-                        retry_count = retry_count + 1,
-                        error_message = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                """, (error_message, item_id))
-                conn.commit()
-                logger.warning(f"⚠️  Retry {item[0] + 1}/{item[1]} for queue item {item_id}")
+            # Filter and update status
+            target_time_str = target_time.isoformat()
 
-    def get_stats(self) -> dict:
-        """Get queue statistics."""
-        with sqlite3.connect(self.db_path) as conn:
-            stats = {}
+            updated = df.with_columns(
+                pl.when(
+                    (pl.col('symbol') == symbol) &
+                    (pl.col('target_time') == target_time_str)
+                )
+                .then(pl.lit('in_progress'))
+                .otherwise(pl.col('status'))
+                .alias('status')
+            )
 
-            for status in ['pending', 'in_progress', 'completed', 'failed']:
-                count = conn.execute("""
-                    SELECT COUNT(*) FROM collection_queue WHERE status = ?
-                """, (status,)).fetchone()[0]
-                stats[status] = count
+            # Overwrite with updated data
+            write_deltalake(
+                self.table_path,
+                updated,
+                mode='overwrite'
+            )
 
-            # Items older than 7 days (stale)
-            stale = conn.execute("""
-                SELECT COUNT(*) FROM collection_queue
-                WHERE status IN ('pending', 'in_progress')
-                  AND target_time < datetime('now', '-7 days')
-            """).fetchone()[0]
-            stats['stale'] = stale
+            logger.debug(f"Marked {symbol} {target_time} as in_progress")
+        except Exception as e:
+            logger.error(f"Failed to mark in progress: {e}")
+
+    def mark_completed(self, symbol: str, target_time: datetime):
+        """
+        Mark item as completed successfully.
+
+        Args:
+            symbol: Underlying symbol
+            target_time: Target collection time
+        """
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
+
+            # Filter and update status
+            target_time_str = target_time.isoformat()
+
+            updated = df.with_columns(
+                pl.when(
+                    (pl.col('symbol') == symbol) &
+                    (pl.col('target_time') == target_time_str)
+                )
+                .then(pl.lit('completed'))
+                .otherwise(pl.col('status'))
+                .alias('status')
+            )
+
+            # Overwrite with updated data
+            write_deltalake(
+                self.table_path,
+                updated,
+                mode='overwrite'
+            )
+
+            logger.debug(f"Marked {symbol} {target_time} as completed")
+        except Exception as e:
+            logger.error(f"Failed to mark completed: {e}")
+
+    def increment_retry(self, symbol: str, target_time: datetime):
+        """
+        Increment retry count for an item.
+
+        Args:
+            symbol: Underlying symbol
+            target_time: Target collection time
+        """
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
+
+            # Filter and update retry count and status
+            target_time_str = target_time.isoformat()
+
+            updated = df.with_columns(
+                pl.when(
+                    (pl.col('symbol') == symbol) &
+                    (pl.col('target_time') == target_time_str)
+                )
+                .then(pl.col('retry_count') + 1)
+                .otherwise(pl.col('retry_count'))
+                .alias('retry_count')
+            ).with_columns(
+                pl.when(
+                    (pl.col('symbol') == symbol) &
+                    (pl.col('target_time') == target_time_str) &
+                    (pl.col('retry_count') >= pl.col('max_retries'))
+                )
+                .then(pl.lit('failed'))
+                .otherwise(pl.col('status'))
+                .alias('status')
+            )
+
+            # Overwrite with updated data
+            write_deltalake(
+                self.table_path,
+                updated,
+                mode='overwrite'
+            )
+
+            logger.debug(f"Incremented retry count for {symbol} {target_time}")
+        except Exception as e:
+            logger.error(f"Failed to increment retry: {e}")
+
+    def get_stats(self) -> Dict:
+        """
+        Get queue statistics.
+
+        Returns:
+            Dictionary with queue stats
+        """
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
+
+            stats = {
+                'total': len(df),
+                'pending': len(df.filter(pl.col('status') == 'pending')),
+                'in_progress': len(df.filter(pl.col('status') == 'in_progress')),
+                'completed': len(df.filter(pl.col('status') == 'completed')),
+                'failed': len(df.filter(pl.col('status') == 'failed')),
+            }
 
             return stats
+        except Exception as e:
+            logger.warning(f"Failed to get stats: {e}")
+            return {
+                'total': 0,
+                'pending': 0,
+                'in_progress': 0,
+                'completed': 0,
+                'failed': 0,
+            }
 
-    def cleanup_old_items(self, days: int = 30):
+    def cleanup_old(self, days: int = 7):
         """
-        Remove completed items older than specified days.
+        Remove completed/failed items older than specified days.
 
         Args:
-            days: Days to keep completed items
+            days: Days to keep items
         """
-        with sqlite3.connect(self.db_path) as conn:
-            result = conn.execute("""
-                DELETE FROM collection_queue
-                WHERE status = 'completed'
-                  AND updated_at < datetime('now', '-' || ? || ' days')
-            """, (days,))
+        try:
+            dt = DeltaTable(self.table_path)
+            df = pl.from_pandas(dt.to_pandas())
 
-            conn.commit()
+            cutoff = datetime.now() - timedelta(days=days)
 
-            if result.rowcount > 0:
-                logger.info(f"🧹 Cleaned up {result.rowcount} old completed items")
+            # Filter out old completed/failed items
+            filtered = df.filter(
+                ~(
+                    (pl.col('status').is_in(['completed', 'failed'])) &
+                    (pl.col('created_at') < cutoff.isoformat())
+                )
+            )
 
-    def get_failed_summaries(self, limit: int = 20) -> List[dict]:
-        """
-        Get summary of recent failed items for diagnostics.
+            # Overwrite with filtered data
+            write_deltalake(
+                self.table_path,
+                filtered,
+                mode='overwrite'
+            )
 
-        Args:
-            limit: Maximum items to return
-
-        Returns:
-            List of dicts with failure information
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT symbol, target_time, error_type, error_message,
-                       retry_count, max_retries, status
-                FROM collection_queue
-                WHERE status != 'completed'
-                ORDER BY target_time DESC
-                LIMIT ?
-            """, (limit,)).fetchall()
-
-            return [dict(row) for row in rows]
+            logger.info(f"Cleaned up old queue items (> {days} days)")
+        except Exception as e:
+            logger.error(f"Failed to cleanup old items: {e}")
