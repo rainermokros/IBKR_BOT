@@ -96,6 +96,16 @@ class CollectionQueue:
 
             # Create empty table with schema
             empty_df = pl.DataFrame({
+                'symbol': [],
+                'target_time': [],
+                'attempt_time': [],
+                'error_type': [],
+                'error_message': [],
+                'retry_count': [],
+                'max_retries': [],
+                'status': [],
+                'created_at': []
+            }).cast({
                 'symbol': pl.String,
                 'target_time': pl.String,
                 'attempt_time': pl.String,
@@ -105,12 +115,12 @@ class CollectionQueue:
                 'max_retries': pl.Int32,
                 'status': pl.String,
                 'created_at': pl.String
-            }).schema
+            })
 
-            # Write empty schema
+            # Write empty table
             write_deltalake(
                 self.table_path,
-                schema=empty_df,
+                empty_df,
                 mode='overwrite'
             )
 
