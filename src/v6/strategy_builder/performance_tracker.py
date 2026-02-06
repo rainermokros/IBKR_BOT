@@ -11,6 +11,7 @@ Key patterns:
 - Integration: Writes to performance_metrics Delta Lake table (Plan 01)
 """
 
+import asyncio
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -254,6 +255,85 @@ class StrategyPerformanceTracker:
             unrealized_pnl_dict[trade_id] = unrealized_pnl
 
         return unrealized_pnl_dict
+
+    async def write_unrealized_pnl_to_position_updates(
+        self,
+        unrealized_pnl_dict: Dict[str, float],
+        current_prices: Dict[str, float]
+    ) -> None:
+        """
+        Write current unrealized P&L to position_updates Delta Lake table.
+
+        This enables historical P&L tracking while keeping Risk Manager
+        reading from in-memory cache (fast + persistent).
+
+        Args:
+            unrealized_pnl_dict: {trade_id: unrealized_pnl}
+            current_prices: {trade_id: current_option_price}
+        """
+        try:
+            from datetime import date
+            import polars as pl
+            from deltalake import write_deltalake
+            from ib_async import IB
+
+            # Fetch current IB positions to get contract details
+            ib = IB()
+            await ib.connectAsync('127.0.0.1', port=4002, clientId=9970, timeout=10)
+            await asyncio.sleep(1)
+
+            positions = list(ib.positions())
+            ib.disconnect()
+
+            # Build position records
+            position_records = []
+            for position in positions:
+                if position.position == 0:
+                    continue
+
+                contract = position.contract
+                if not hasattr(contract, 'right'):
+                    continue
+
+                # Match with our tracked trades
+                symbol = contract.symbol
+                matching_trade_ids = [
+                    tid for tid in self._active_trades.keys()
+                    if self._active_trades[tid]['entry_metric'].get('symbol') == symbol
+                ]
+
+                for trade_id in matching_trade_ids:
+                    entry_metric = self._active_trades[trade_id]['entry_metric']
+                    upl = unrealized_pnl_dict.get(trade_id, 0)
+                    current_price = current_prices.get(trade_id, entry_metric.entry_price)
+
+                    position_records.append({
+                        'conid': contract.conId,
+                        'symbol': symbol,
+                        'right': contract.right,
+                        'strike': contract.strike,
+                        'expiry': contract.lastTradeDateOrContractMonth,
+                        'position': position.position,
+                        'market_price': current_price,
+                        'market_value': position.marketValue() if hasattr(position, 'marketValue') else None,
+                        'average_cost': position.avgCost if position.avgCost else entry_metric.entry_price,
+                        'unrealized_pnl': upl,
+                        'timestamp': datetime.now(),
+                        'date': date.today(),
+                    })
+
+            # Write to Delta Lake
+            if position_records:
+                df = pl.DataFrame(position_records)
+                write_deltalake(
+                    'data/lake/position_updates',
+                    df,
+                    mode='append',  # Append for historical tracking
+                )
+                logger.debug(f"Wrote {len(position_records)} position updates to Delta Lake")
+
+        except Exception as e:
+            logger.warning(f"Failed to write UPL to position_updates: {e}")
 
     def calculate_unrealized_pnl_black_scholes(
         self,
