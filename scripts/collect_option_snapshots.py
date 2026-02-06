@@ -54,13 +54,13 @@ async def collect_with_reconnect(ib: IB, symbol: str) -> dict:
         logger.info(f"COLLECTING {symbol}")
         logger.info(f"{'='*70}")
 
-        # Get stock price
+        # Get stock price using reqTickersAsync (waits for data to arrive)
         stock = Stock(symbol, 'SMART', 'USD')
         await ib.qualifyContractsAsync(stock)
-        ticker = ib.reqMktData(stock, "", False, False)
-        await asyncio.sleep(1)
+        tickers = await ib.reqTickersAsync(stock)
+        ticker = tickers[0]
 
-        current_price = ticker.marketPrice() if hasattr(ticker, 'marketPrice') else ticker.last
+        current_price = ticker.marketPrice()
         logger.info(f"{symbol} Price: {current_price}")
 
         # Find weekly expirations

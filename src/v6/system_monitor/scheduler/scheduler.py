@@ -20,6 +20,7 @@ Features:
 """
 
 import asyncio
+import json
 import signal
 import subprocess
 import sys
@@ -43,11 +44,14 @@ class UnifiedScheduler:
     - Task scheduling based on config table
     """
 
+    LAST_RUN_FILE = Path("data/lake/scheduler_config/.last_run.json")
+
     def __init__(self):
         """Initialize scheduler."""
         self.nyse = NYSECalendar()
         self.running = True
-        self.last_run = {}  # Track when each task last ran
+        self.last_run = self._load_last_run()  # Persist across runs
+        self.last_attempt = self._load_last_attempt()  # Track last attempt time (even failures)
 
         # Load configuration from Delta Lake
         self.config_table = SchedulerConfigTable()
@@ -58,6 +62,58 @@ class UnifiedScheduler:
         logger.info("=" * 70)
         logger.info("V6 UNIFIED SCHEDULER - DELTA LAKE CONFIG")
         logger.info("=" * 70)
+
+    def _load_last_run(self) -> dict:
+        """Load last run times from file."""
+        if self.LAST_RUN_FILE.exists():
+            try:
+                with open(self.LAST_RUN_FILE) as f:
+                    data = json.load(f)
+                # Convert string timestamps back to datetime
+                # Only load entries without the "attempt:" prefix
+                return {
+                    k: datetime.fromisoformat(v)
+                    for k, v in data.items()
+                    if not k.startswith("attempt:")
+                }
+            except Exception as e:
+                logger.warning(f"Could not load last run file: {e}")
+        return {}
+
+    def _load_last_attempt(self) -> dict:
+        """Load last attempt times from file."""
+        if self.LAST_RUN_FILE.exists():
+            try:
+                with open(self.LAST_RUN_FILE) as f:
+                    data = json.load(f)
+                # Convert string timestamps back to datetime
+                # Only load entries with the "attempt:" prefix
+                return {
+                    k.replace("attempt:", ""): datetime.fromisoformat(v)
+                    for k, v in data.items()
+                    if k.startswith("attempt:")
+                }
+            except Exception as e:
+                logger.warning(f"Could not load last attempt file: {e}")
+        return {}
+
+    def _save_last_run(self) -> None:
+        """Save both last run and last attempt times to file."""
+        try:
+            self.LAST_RUN_FILE.parent.mkdir(parents=True, exist_ok=True)
+            # Combine both dictionaries with prefixes
+            data = {
+                k: v.isoformat()
+                for k, v in self.last_run.items()
+            }
+            # Add attempts with prefix
+            for k, v in self.last_attempt.items():
+                data[f"attempt:{k}"] = v.isoformat()
+
+            with open(self.LAST_RUN_FILE, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            logger.error(f"Could not save last run file: {e}")
 
     def _setup_logging(self):
         """Configure logging."""
@@ -118,8 +174,10 @@ class UnifiedScheduler:
         if task_phase != "any" and task_phase != current_phase:
             return False
 
-        # Check if already ran recently
+        # Check if already ran recently (successful or attempted)
         task_name = task["task_name"]
+
+        # Check last successful run
         if task_name in self.last_run:
             last_run = self.last_run[task_name]
             minutes_since = (current_time - last_run).total_seconds() / 60
@@ -136,6 +194,15 @@ class UnifiedScheduler:
                     return False
 
             if interval_minutes and minutes_since < interval_minutes:
+                return False
+
+        # Also check last attempt to prevent retry storms on failures
+        # Use a minimum cooldown of 2 minutes regardless of frequency
+        if task_name in self.last_attempt:
+            last_attempt = self.last_attempt[task_name]
+            minutes_since = (current_time - last_attempt).total_seconds() / 60
+            if minutes_since < 2:  # Minimum 2 minute cooldown on failures
+                logger.debug(f"  {task_name} attempted {minutes_since:.1f} min ago, cooling down")
                 return False
 
         # Check specific schedule time (for daily/weekly tasks)
@@ -219,9 +286,16 @@ class UnifiedScheduler:
 
             if result.returncode == 0:
                 logger.info(f"  ✓ Success")
-                self.last_run[task_name] = datetime.now()
+                now = datetime.now()
+                self.last_run[task_name] = now
+                self.last_attempt[task_name] = now  # Track both
+                self._save_last_run()  # Persist for next run
                 return True
             else:
+                # Track failed attempt to prevent retry storms
+                self.last_attempt[task_name] = datetime.now()
+                self._save_last_run()
+
                 # Check if it's just a missing script
                 if "No module named" in result.stderr:
                     logger.warning(f"  ⚠ Script not found: {script_path}")
@@ -232,9 +306,13 @@ class UnifiedScheduler:
                     return False
 
         except subprocess.TimeoutExpired:
+            self.last_attempt[task_name] = datetime.now()
+            self._save_last_run()
             logger.error(f"  ✗ Timeout after {timeout}s")
             return False
         except Exception as e:
+            self.last_attempt[task_name] = datetime.now()
+            self._save_last_run()
             logger.error(f"  ✗ Error: {e}")
             return False
 
