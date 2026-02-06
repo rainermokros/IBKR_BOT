@@ -38,6 +38,8 @@ from v6.strategy_builder.decision_engine.models import Decision, DecisionAction,
 from v6.risk_manager.trailing_stop import TrailingStopConfig, TrailingStopManager, TrailingStopAction
 from v6.strategy_builder.models import StrategyExecution
 from v6.strategy_builder.repository import StrategyRepository
+from v6.strategy_builder.performance_tracker import StrategyPerformanceTracker
+from v6.system_monitor.data.performance_metrics_persistence import PerformanceMetricsTable, PerformanceWriter
 
 logger = logger.bind(component="PositionMonitoringWorkflow")
 
@@ -98,6 +100,7 @@ class PositionMonitoringWorkflow:
         self.alert_manager = alert_manager
         self.strategy_repo = strategy_repo
         self.trailing_stops = trailing_stops
+        self.performance_tracker = performance_tracker
         self.monitoring_interval = monitoring_interval
         self.logger = logger
 
@@ -150,9 +153,33 @@ class PositionMonitoringWorkflow:
             action_counts[action] = action_counts.get(action, 0) + 1
 
         self.logger.info(
-            f"Monitoring cycle complete: {len(decisions)} positions, "
+            f"Monitoring cycle complete: {len(decisions) positions, "
             f"actions={action_counts}"
         )
+
+        # Write UPL to position_updates for historical tracking
+        if self.performance_tracker:
+            try:
+                # Get current prices (simplified - using entry prices for now)
+                # In production, this would fetch real-time market data
+                current_prices = {}
+                for strategy in open_strategies:
+                    if hasattr(strategy, 'entry_params') and strategy.entry_params:
+                        # Extract entry price from premium
+                        entry_price = strategy.entry_params.get('premium_received', 0)
+                        current_prices[strategy.execution_id] = entry_price
+
+                # Calculate UPL
+                unrealized_pnl_dict = self.performance_tracker.calculate_unrealized_pnl(current_prices)
+
+                # Write to position_updates
+                await self.performance_tracker.write_unrealized_pnl_to_position_updates(
+                    unrealized_pnl_dict,
+                    current_prices
+                )
+                self.logger.debug("✓ Wrote UPL to position_updates")
+            except Exception as e:
+                self.logger.warning(f"Failed to write UPL to position_updates: {e}")
 
         return decisions
 
