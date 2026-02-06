@@ -1,0 +1,41 @@
+[Unit]
+Description=V6 Trading Bot - Paper trading with trailing stops
+After=network.target ib-gateway.service
+Requires=ib-gateway.service
+
+[Service]
+Type=simple
+User=bigballs
+Group=bigballs
+WorkingDirectory=/home/bigballs/project/bot/v6
+
+# Paper trading script with trailing stops enabled
+ExecStart=/home/bigballs/miniconda3/envs/ib/bin/python scripts/run_paper_trading.py --monitoring-interval 30
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONPATH=/home/bigballs/project/bot/v6/src"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=v6-paper-trading
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+# Graceful shutdown (wait for positions to close)
+TimeoutStopSec=60
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

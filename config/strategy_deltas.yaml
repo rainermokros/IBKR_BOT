@@ -1,0 +1,185 @@
+# Strategy Delta Configuration
+# This file defines the target delta ranges for each strategy type
+
+# Iron Condor Delta Targets
+iron_condor:
+  short_puts:
+    min_delta: 0.16      # 16 delta (1 standard deviation)
+    max_delta: 0.20      # 20 delta (aggressive but safe)
+    target_delta: 0.18   # 18 delta (balanced)
+    description: "Short puts should be 16-20 delta for ~68% probability of OTM"
+
+  short_calls:
+    min_delta: 0.16      # 16 delta (1 standard deviation)
+    max_delta: 0.20      # 20 delta (aggressive but safe)
+    target_delta: 0.18   # 18 delta (balanced)
+    description: "Short calls should be 16-20 delta for ~68% probability of OTM"
+
+  wing_width:
+    min_width_pct: 1.0   # Minimum 1% of underlying price
+    max_width_pct: 3.0   # Maximum 3% of underlying price
+    target_width_pct: 2.0  # Standard 2% wings
+    min_width_points: 3.0  # Minimum 3 points (for lower-priced assets)
+    max_width_points: 25.0 # Maximum 25 points (for higher-priced assets)
+    description: "Wing width as percentage of ATM price, with point limits"
+
+  balance_tolerance:
+    max_delta_diff: 0.05 # Max 5 delta difference between put/call short strikes
+    description: "Iron Condor should be directionally neutral"
+
+# Put Spread (Bull Put) Delta Targets
+# Tastytrade standard: Short strike at .30 delta for ~70% probability of OTM
+put_spread:
+  short_leg:
+    min_delta: 0.28
+    max_delta: 0.32
+    target_delta: 0.30      # Sweet spot balancing risk/reward
+    description: "30 delta provides ~70% theoretical probability of OTM"
+
+  long_leg:
+    min_delta: 0.20        # Further OTM for protection
+    max_delta: 0.25
+    target_delta: 0.22
+    description: "Long wing provides protection at lower delta"
+
+  spread_width:
+    min_width_pct: 0.8   # Minimum 0.8% of underlying price
+    max_width_pct: 2.0   # Maximum 2% of underlying price
+    target_width_pct: 1.0  # Standard 1% spread
+    min_width_points: 3.0  # Minimum 3 points
+    max_width_points: 15.0 # Maximum 15 points
+    description: "Spread width as percentage of ATM price"
+
+# Call Spread (Bear Call) Delta Targets
+# Tastytrade standard: Short strike at .30 delta for ~70% probability of OTM
+call_spread:
+  short_leg:
+    min_delta: 0.28        # Short strike (credit)
+    max_delta: 0.32
+    target_delta: 0.30      # Sweet spot balancing risk/reward
+    description: "30 delta provides ~70% theoretical probability of OTM"
+
+  long_leg:
+    min_delta: 0.35        # Further ITM for protection
+    max_delta: 0.40
+    target_delta: 0.37
+    description: "Long wing provides protection at higher delta"
+
+  spread_width:
+    min_width_pct: 0.8   # Minimum 0.8% of underlying price
+    max_width_pct: 2.0   # Maximum 2% of underlying price
+    target_width_pct: 1.0  # Standard 1% spread
+    min_width_points: 3.0  # Minimum 3 points
+    max_width_points: 15.0 # Maximum 15 points
+    description: "Spread width as percentage of ATM price"
+
+# Wheel Strategy Delta Targets
+wheel:
+  short_puts:
+    min_delta: 0.20      # 20 delta (higher probability of assignment)
+    max_delta: 0.30      # 30 delta (more aggressive)
+    target_delta: 0.25
+
+  roll_threshold:
+    delta_threshold: 0.10  # Roll when delta drops below 10
+    description: "Roll short puts to next expiration or strike"
+
+# Covered Call Strategy Delta Targets
+covered_call:
+  short_calls:
+    min_delta: 0.20      # 20 delta (moderate premium)
+    max_delta: 0.30      # 30 delta (more premium, higher assignment risk)
+    target_delta: 0.25
+
+  roll_threshold:
+    delta_threshold: 0.10  # Roll when delta drops below 10
+    description: "Roll calls to next expiration or strike"
+
+# Data Collection Delta Range
+data_collection:
+  min_delta: 0.10        # 10 delta (minimum for strategy relevance)
+  max_delta: 0.80        # 80 delta (maximum for strategy relevance)
+  description: "Collect options with delta 10-80 for strategy selection"
+
+# Position Monitoring
+position_monitoring:
+  delta_warning_threshold: 0.05   # Alert if position delta moves beyond ±5
+  gamma_warning_threshold: 0.10   # Alert if gamma exceeds 10% of position
+  theta_warning_threshold: -0.50  # Alert if theta is too negative (losing time value)
+
+# Risk Management
+risk_management:
+  max_position_delta: 0.20        # Max net delta per position (directional exposure)
+  max_portfolio_delta: 0.50       # Max net delta across all positions
+  max_gamma_exposure: 0.30        # Max gamma exposure (volatility risk)
+
+# Validation Rules
+validation:
+  iron_condor_neutral:
+    - short_put_delta within 0.16-0.20
+    - short_call_delta within 0.16-0.20
+    - delta_difference <= 0.05
+    - wing_width >= 5.0
+
+  put_spread_bullish:
+    - short_put_delta within 0.25-0.30
+    - spread_width >= 5.0
+
+  call_spread_bullish:
+    - long_call_delta within 0.30-0.35
+    - spread_width >= 5.0
+
+# =============================================================================
+# 45-21 DTE Framework Configuration
+# =============================================================================
+
+# IV Rank Adjustments for Entry
+# Adjust delta targets based on Implied Volatility Rank (IVR)
+# IVR = (Current IV - 52-week Low IV) / (52-week High IV - 52-week Low IV) × 100
+iv_rank_adjustments:
+  very_high_iv:  # IVR 75-100%
+    ivr_min: 75
+    ivr_max: 100
+    iron_condor_short_delta_min: 0.08
+    iron_condor_short_delta_max: 0.12
+    credit_spread_short_delta_min: 0.15
+    credit_spread_short_delta_max: 0.20
+    description: "Very expensive premiums, sell further OTM (8-12 delta)"
+
+  high_iv:  # IVR 50-75%
+    ivr_min: 50
+    ivr_max: 75
+    iron_condor_short_delta_min: 0.16
+    iron_condor_short_delta_max: 0.20
+    credit_spread_short_delta_min: 0.25
+    credit_spread_short_delta_max: 0.35
+    description: "Standard Tastytrade guidelines (16-20 delta)"
+
+  moderate_iv:  # IVR 25-50%
+    ivr_min: 25
+    ivr_max: 50
+    iron_condor_short_delta_min: 0.25
+    iron_condor_short_delta_max: 0.30
+    credit_spread_short_delta_min: 0.30
+    credit_spread_short_delta_max: 0.40
+    description: "Fairly priced, move closer to ATM (25-30 delta)"
+
+  low_iv:  # IVR 0-25%
+    ivr_min: 0
+    ivr_max: 25
+    use_debit_spreads: true
+    description: "Cheap premiums, use debit spreads instead of credit"
+
+# Entry DTE Target
+entry_dte:
+  target: 45
+  min: 35
+  max: 60
+  description: "Enter at 45 DTE to capture theta decay while avoiding gamma spike"
+
+# Exit DTE Target (21 DTE framework)
+exit_dte:
+  target: 21
+  min: 14
+  max: 28
+  description: "Exit at 21 DTE to avoid gamma acceleration near expiration"

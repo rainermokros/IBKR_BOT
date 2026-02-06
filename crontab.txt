@@ -1,0 +1,123 @@
+# V6 Trading System - ET-Based Scheduler Configuration
+# All times are in Eastern Time (America/New_York)
+#
+# CRONTAB FORMAT:
+# minute hour day month weekday command
+#
+# TIMEZONE: All schedules use ET (NYSE timezone)
+# Holiday-aware wrapper skips execution on NYSE holidays
+#
+# INSTALLATION:
+#   sudo cp crontab.txt /etc/cron.d/v6-trading
+#   sudo chmod 644 /etc/cron.d/v6-trading
+#   sudo service cron restart
+#
+# MONITORING:
+#   tail -f /tmp/v6_*.log
+#   View logs at: logs/scheduler/
+
+# =============================================================================
+# PRE-MARKET TASKS (Before 9:30 AM ET)
+# =============================================================================
+
+# 8:00 AM ET - Queue all option contracts >20 DTE for consulting
+0 8 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/queue_option_contracts.py >> /tmp/v6_pre_market.log 2>&1
+
+# 8:30 AM ET - Load overnight market data (SPY, QQQ, IWM)
+30 8 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/load_enhanced_market_data.py >> /tmp/v6_pre_market.log 2>&1
+
+# 8:45 AM ET - Verify IB Gateway is ready
+45 8 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/validate_ib_connection.py >> /tmp/v6_validation.log 2>&1
+
+# 9:35 AM ET - Queue option contracts for trading day
+35 9 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/schedule_935_et.py >> /tmp/v6_935_et.log 2>&1
+
+# =============================================================================
+# DURING MARKET HOURS (9:30 AM - 4:00 PM ET)
+# =============================================================================
+
+# Every 5 minutes - Collect option chain data (258 contracts)
+# Runs at :00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55
+# Enhanced with retry logic and automatic backfill queue management
+# Note: Managed by unified scheduler (v6/system_monitor/scheduler/scheduler.py)
+*/5 9-16 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/collect_option_snapshots.py >> /tmp/v6_intraday.log 2>&1
+
+# Every 5 minutes - Collect futures data (ES, NQ, RTY)
+*/5 9-16 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/collect_futures_snapshots.py >> /tmp/v6_futures.log 2>&1
+
+# Hourly at :30 - Update intraday statistics
+30 9-16 * * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/calculate_intraday_statistics.py >> /tmp/v6_stats.log 2>&1
+
+# =============================================================================
+# POST-MARKET TASKS (After 4:00 PM ET)
+# =============================================================================
+
+# 4:15 PM ET - Final market snapshot of the day
+15 16 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/final_data_collection.py >> /tmp/v6_post_market.log 2>&1
+
+# 6:00 PM ET - End-of-day statistics calculation
+0 18 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/calculate_daily_statistics.py >> /tmp/v6_daily_stats.log 2>&1
+
+# 6:30 PM ET - Data quality checks
+30 18 * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/validate_data_quality.py >> /tmp/v6_audit.log 2>&1
+
+# =============================================================================
+# WEEKLY TASKS (Saturday/Sunday)
+# =============================================================================
+
+# Saturday 10 AM ET - Fill missing historical data
+0 10 * * 6 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/load_historical_data.py >> /tmp/v6_weekly.log 2>&1
+
+# Saturday 11 AM ET - Weekly data audit
+0 11 * * 6 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/audit_data_integrity.py >> /tmp/v6_audit.log 2>&1
+
+# Sunday 8 AM ET - Remove stale data (>90 days)
+0 8 * * 0 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/cleanup_old_data.py >> /tmp/v6_cleanup.log 2>&1
+
+# =============================================================================
+# MONITORING TASKS (Daily)
+# =============================================================================
+
+# Every 15 minutes - System health check
+*/15 * * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/health_check.py >> /tmp/v6_health.log 2>&1
+
+# Every hour - Position reconciliation
+0 * * * 1-5 bigballs cd /home/bigballs/project/bot/v6 && /home/bigballs/project/bot/v6/scripts/cron_wrapper.sh /home/bigballs/miniconda3/envs/ib/bin/python scripts/validate_positions.py >> /tmp/v6_positions.log 2>&1
+
+# =============================================================================
+# NOTES
+# =============================================================================
+#
+# 1. All scripts use the cron_wrapper.sh which:
+#    - Checks if today is a NYSE trading day
+#    - Skips execution on holidays and weekends
+#    - Logs all skipped executions
+#    - Supports FORCE_RUN mode for maintenance
+#
+# 2. To temporarily disable a job, comment out the line with #
+#
+# 3. To force run on holidays:
+#    FORCE_RUN=true /path/to/script.py
+#
+# 4. View log files:
+#    tail -f /tmp/v6_pre_market.log
+#    tail -f /tmp/v6_intraday.log
+#    tail -f /tmp/v6_post_market.log
+#
+# 5. Test cron wrapper:
+#    ./scripts/cron_wrapper.sh scripts/health_check.py
+#
+# 6. Dashboard provides GUI management:
+#    http://localhost:8501 -> Scheduler page
+#
+# 7. NYSE Holidays 2026 (automatically skipped):
+#    - New Year's Day: January 1
+#    - MLK Day: January 19
+#    - Washington's Birthday: February 16
+#    - Good Friday: April 10
+#    - Memorial Day: May 25
+#    - Juneteenth: June 19
+#    - Independence Day: July 3 (observed)
+#    - Labor Day: September 7
+#    - Thanksgiving: November 26
+#    - Christmas: December 25

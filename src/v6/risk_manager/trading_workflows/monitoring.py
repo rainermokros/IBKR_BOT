@@ -84,6 +84,7 @@ class PositionMonitoringWorkflow:
         alert_manager: AlertManager,
         strategy_repo: StrategyRepository,
         trailing_stops: TrailingStopManager | None = None,
+        performance_tracker: StrategyPerformanceTracker | None = None,
         monitoring_interval: int = 30,
     ):
         """
@@ -94,6 +95,7 @@ class PositionMonitoringWorkflow:
             alert_manager: AlertManager for alert generation
             strategy_repo: StrategyRepository for position data
             trailing_stops: Optional TrailingStopManager for trailing stop management
+            performance_tracker: Optional StrategyPerformanceTracker for UPL tracking
             monitoring_interval: Seconds between monitoring cycles
         """
         self.decision_engine = decision_engine
