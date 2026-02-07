@@ -28,3 +28,22 @@ trading_limits:
 
 # Note: Profit targets configured in profit_targets section
 # (managed by 9-01 Dynamic Profit Targets plan)
+
+# Dynamic Profit Targets by Market Regime
+profit_targets:
+  # Regime-based take profit thresholds (percentage of max profit)
+  # Lower = more defensive (lock profits earlier)
+  crash: 0.40              # Very defensive - lock profits at 40%
+  high_volatility: 0.50    # Defensive - lock profits at 50%
+  normal: 0.80             # Default - let profits run to 80%
+  low_volatility: 0.90     # Aggressive - let profits run to 90%
+  trending: 0.85           # Trend following - allow more upside
+  range_bound: 0.80        # Neutral - standard target
+
+  # Partial profit taking
+  partial_tp_enabled: true
+  partial_tp_threshold: 0.50   # Take 50% of position at this threshold
+  partial_tp_ratio: 0.50       # Close 50% of position
+
+  # Override settings (optional)
+  use_regime_tp: true      # Enable regime-based TP (false = use fixed 80%)
