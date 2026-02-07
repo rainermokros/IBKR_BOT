@@ -469,3 +469,245 @@ class IVPercentileExit:
             )
 
         return None
+
+
+class DynamicTakeProfit:
+    """
+    Dynamic take profit based on market regime.
+
+    High volatility: 50% TP (lock profits quickly)
+    Low volatility: 90% TP (let winners run)
+    Crash regime: 40% TP (very defensive)
+
+    Integrates with EnhancedMarketRegimeDetector for regime detection.
+
+    Priority 2.1: Slightly higher than fixed TP to take precedence.
+    """
+
+    priority = 2.1  # Slightly higher than fixed TP
+    name = "dynamic_take_profit"
+
+    # Default TP thresholds by regime (overridable via config)
+    DEFAULT_TP_BY_REGIME = {
+        "crash": 0.40,
+        "high_volatility": 0.50,
+        "normal": 0.80,
+        "low_volatility": 0.90,
+        "trending": 0.85,
+        "range_bound": 0.80,
+    }
+
+    def __init__(self, regime_detector, config_path=None):
+        """
+        Initialize dynamic take profit rule.
+
+        Args:
+            regime_detector: EnhancedMarketRegimeDetector instance
+            config_path: Optional path to trading_config.yaml
+        """
+        self.regime_detector = regime_detector
+        self.tp_by_regime = self._load_config(config_path)
+        self.partial_tp_ratio = 0.50  # Close 50% of position on partial TP
+        self.fallback_threshold = 0.80  # Fallback to 80% if regime detection fails
+
+    def _load_config(self, config_path):
+        """
+        Load TP thresholds from config file.
+
+        Args:
+            config_path: Path to trading_config.yaml or None for default location
+
+        Returns:
+            Dict of regime -> TP threshold
+        """
+        from pathlib import Path
+
+        # Determine default config path
+        if config_path is None:
+            project_root = Path(__file__).parent.parent.parent.parent
+            config_path = project_root / "config" / "trading_config.yaml"
+
+        config_file = Path(config_path)
+
+        if not config_file.exists():
+            logger.debug(f"Trading config not found: {config_path}, using defaults")
+            return self.DEFAULT_TP_BY_REGIME.copy()
+
+        try:
+            import yaml
+
+            with open(config_file, "r") as f:
+                data = yaml.safe_load(f)
+
+            if not data or "profit_targets" not in data:
+                logger.debug(f"No profit_targets in config, using defaults")
+                return self.DEFAULT_TP_BY_REGIME.copy()
+
+            # Extract profit_targets section
+            profit_targets = data["profit_targets"]
+
+            # Build TP dict from config, falling back to defaults for missing regimes
+            tp_by_regime = self.DEFAULT_TP_BY_REGIME.copy()
+            for regime in tp_by_regime:
+                if regime in profit_targets:
+                    tp_by_regime[regime] = float(profit_targets[regime])
+
+            # Check if regime-based TP is disabled
+            use_regime_tp = profit_targets.get("use_regime_tp", True)
+            if not use_regime_tp:
+                logger.debug("Regime-based TP disabled, using 80% for all regimes")
+                for regime in tp_by_regime:
+                    tp_by_regime[regime] = 0.80
+
+            logger.info(f"✓ Loaded trading config from {config_file}")
+            logger.debug(f"  TP thresholds: {tp_by_regime}")
+
+            return tp_by_regime
+
+        except Exception as e:
+            logger.warning(f"Error loading trading config: {e}, using defaults")
+            return self.DEFAULT_TP_BY_REGIME.copy()
+
+    async def get_tp_threshold(
+        self,
+        symbol: str,
+        iv_rank: float,
+        vix: float,
+        underlying_price: float,
+    ) -> tuple[float, str]:
+        """
+        Get TP threshold based on current market regime.
+
+        Args:
+            symbol: Underlying symbol
+            iv_rank: Current IV rank (0-100)
+            vix: Current VIX value
+            underlying_price: Current underlying price
+
+        Returns:
+            Tuple of (threshold, regime_name)
+        """
+        try:
+            # Detect regime using enhanced detector
+            regime = await self.regime_detector.detect_regime(
+                symbol=symbol,
+                current_iv_rank=iv_rank,
+                current_vix=vix,
+                underlying_price=underlying_price,
+            )
+
+            # Get derived_regime for TP calculation
+            regime_type = regime.derived_regime
+
+            # Look up TP threshold for this regime
+            threshold = self.tp_by_regime.get(
+                regime_type,
+                self.tp_by_regime.get("normal", self.fallback_threshold)
+            )
+
+            logger.debug(
+                f"Dynamic TP: {symbol} regime={regime_type}, "
+                f"threshold={threshold*100:.0f}%, "
+                f"IV rank={iv_rank:.1f}, VIX={vix:.2f}"
+            )
+
+            return threshold, regime_type
+
+        except Exception as e:
+            logger.warning(f"Regime detection failed: {e}, using fallback {self.fallback_threshold*100:.0f}%")
+            return self.fallback_threshold, "fallback"
+
+    async def evaluate(
+        self,
+        snapshot,
+        market_data: Optional[dict] = None
+    ) -> Optional[Decision]:
+        """
+        Evaluate dynamic take profit conditions.
+
+        Args:
+            snapshot: Position snapshot with unrealized_pnl, entry_price
+            market_data: Dict with market data for regime detection:
+                - "symbol": Underlying symbol
+                - "iv_rank": Current IV rank (0-100)
+                - "vix": Current VIX value
+                - "underlying_price": Current underlying price
+
+        Returns:
+            Decision with CLOSE or REDUCE if triggered, None otherwise
+        """
+        try:
+            unrealized_pnl = float(snapshot['unrealized_pnl'])
+            entry_price = float(snapshot['entry_price'])
+        except (KeyError, AttributeError, TypeError) as e:
+            logger.warning(f"Could not calculate UPL for dynamic take profit: {e}")
+            return None
+
+        # Avoid division by zero
+        if entry_price == 0:
+            return None
+
+        # Calculate UPL percentage
+        upl_pct = unrealized_pnl / entry_price
+
+        # Get market data for regime detection
+        if not market_data:
+            logger.debug("No market data provided, using fallback TP threshold")
+            threshold = self.fallback_threshold
+            regime_type = "fallback"
+        else:
+            symbol = market_data.get("symbol", snapshot.get('symbol', 'SPY'))
+            iv_rank = market_data.get("iv_rank", 50.0)
+            vix = market_data.get("vix", 20.0)
+            underlying_price = market_data.get("underlying_price", 500.0)
+
+            # Get regime-based TP threshold
+            threshold, regime_type = await self.get_tp_threshold(
+                symbol=symbol,
+                iv_rank=iv_rank,
+                vix=vix,
+                underlying_price=underlying_price,
+            )
+
+        # Check partial take profit (50% of full threshold)
+        partial_threshold = threshold * self.partial_tp_ratio
+
+        # Check full take profit
+        if upl_pct >= threshold:
+            return Decision(
+                action=DecisionAction.CLOSE,
+                reason=(
+                    f"Dynamic TP: regime={regime_type}, UPL {upl_pct*100:.1f}% >= "
+                    f"{threshold*100:.0f}% (regime-based)"
+                ),
+                rule="dynamic_take_profit_full",
+                urgency=Urgency.NORMAL,
+                metadata={
+                    "upl_pct": upl_pct,
+                    "threshold": threshold,
+                    "regime": regime_type,
+                    "regime_based": True,
+                }
+            )
+
+        # Check partial take profit
+        if upl_pct >= partial_threshold:
+            return Decision(
+                action=DecisionAction.REDUCE,
+                reason=(
+                    f"Dynamic partial TP: regime={regime_type}, UPL {upl_pct*100:.1f}% >= "
+                    f"{partial_threshold*100:.0f}%, close {self.partial_tp_ratio*100:.0f}%"
+                ),
+                rule="dynamic_take_profit_partial",
+                urgency=Urgency.NORMAL,
+                metadata={
+                    "upl_pct": upl_pct,
+                    "threshold": partial_threshold,
+                    "full_threshold": threshold,
+                    "regime": regime_type,
+                    "close_ratio": self.partial_tp_ratio,
+                    "regime_based": True,
+                }
+            )
+
+        return None
