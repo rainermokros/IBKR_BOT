@@ -164,7 +164,8 @@ def load_trading_config(config_path: Optional[str] = None) -> TradingConfig:
     """
     if config_path is None:
         # Determine project root and config path
-        project_root = Path(__file__).parent.parent.parent
+        # File is at src/v6/config/trading_config.py, go up 4 levels to project root
+        project_root = Path(__file__).parent.parent.parent.parent
         config_path = project_root / "config" / "trading_config.yaml"
 
     config_file = Path(config_path)

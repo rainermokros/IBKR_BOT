@@ -1,0 +1,30 @@
+# Trading Configuration
+# Centralized configuration for V6 trading system
+
+# IB Gateway Connection Settings
+ib_connection:
+  host: "127.0.0.1"
+  port: 4002              # Paper trading port (7497 for live)
+  client_id: 1
+  readonly_port: 7497
+  connect_timeout: 10
+  max_retries: 3
+  retry_delay: 2.0
+
+# Refresh Intervals (seconds)
+refresh_intervals:
+  position_sync: 300       # Position synchronization (5 min)
+  option_chain: 300        # Option chain refresh (5 min)
+  portfolio_delta: 60      # Portfolio delta calculation (1 min)
+  market_data: 60          # Market data refresh (1 min)
+  futures_data: 300        # Futures data collection (5 min)
+
+# Trading Limits
+trading_limits:
+  max_portfolio_delta: 0.30    # Maximum net portfolio delta
+  max_positions_per_symbol: 5  # Max positions per underlying
+  max_single_position_pct: 0.20  # Max concentration in single position
+  max_correlated_pct: 0.40     # Max correlated exposure
+
+# Note: Profit targets configured in profit_targets section
+# (managed by 9-01 Dynamic Profit Targets plan)
