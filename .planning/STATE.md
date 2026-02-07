@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 8 of 8 (Futures Data Collection)
-Plan: Not yet planned
-Status: READY - Ready to plan Phase 8
-Last activity: 2026-01-31 — v1.0 milestone complete
+Plan: 2 of 2 (Dashboard Integration & Analysis)
+Status: COMPLETE - Dashboard integration done, data collection infrastructure needed
+Last activity: 2026-02-07 — Plan 8-02 completed (dashboard integration pre-existing)
 
-Progress: ████████████ 100% (Phases 1-7 complete, v1.0 MVP shipped)
+Progress: ████████████ 100% (Phases 1-7 complete, Phase 8 plans 1-2: 8-02 complete, 8-01 needs implementation)
 
 ## v1.0 MVP Complete
 
@@ -39,7 +39,27 @@ Progress: ████████████ 100% (Phases 1-7 complete, v1.0 M
 
 **Total:** 8 phases, 27 plans, 2 days development
 
-## Phase 8: Futures Data Collection (Next)
+## Phase 8: Futures Data Collection
+
+**Status:** Dashboard Integration Complete (8-02), Data Collection Infrastructure Needed (8-01)
+
+**Plans:**
+- ✅ 8-02: Dashboard Integration & Analysis (COMPLETE - pre-existing implementation)
+- ⏳ 8-01: Futures Data Collection Infrastructure (NOT STARTED - needs implementation)
+
+**Completed (8-02):**
+- Futures data loader with Delta Lake integration and 30s caching
+- Correlation analyzer for ES-SPY, NQ-QQQ, RTY-IWM
+- Lead-lag analysis (5, 15, 30, 60 minute windows)
+- Predictive value assessment (directional accuracy, signal-to-noise)
+- Streamlit futures dashboard page with real-time display
+- Dashboard navigation updated
+
+**Outstanding (8-01):**
+- Futures fetcher with IBKR integration
+- Delta Lake futures snapshots table
+- Collection scheduler and systemd service
+- Integration tests for futures collection
 
 **Objective:** Add futures data collection (ES, NQ, RTY) as leading indicators for entry signal prediction
 
@@ -111,6 +131,9 @@ All key decisions from v1.0 validated and documented in PROJECT.md:
 - Circuit breaker (prevents catastrophic failures)
 - Streamlit dashboard (easy to use, responsive)
 - Systemd services (reliable service management)
+- **Futures dashboard with 30s cache** (Delta Lake integration for real-time display)
+- **Asof join for time-series correlation** (handles unsynchronized futures/spot timestamps)
+- **7-day minimum for futures analysis** (ensures statistical significance)
 
 ### Deferred Issues
 
@@ -118,9 +141,9 @@ None currently. All v1.0 features shipped successfully.
 
 ### Pending Todos
 
-- Plan Phase 8 (Futures Data Collection)
-- Execute Phase 8 plans
-- After 2-4 weeks: Analyze futures correlations
+- Implement Plan 8-01: Futures Data Collection Infrastructure
+- Start futures data collection (ES, NQ, RTY)
+- After 2-4 weeks: Analyze futures correlations using dashboard tools
 - Decision: Integrate futures data into DecisionEngine if valuable
 
 ### Blockers/Concerns
@@ -141,8 +164,8 @@ None. V6 is production-ready and operational.
 
 ## Session Continuity
 
-Last session: 2026-01-31
-Stopped at: v1.0 milestone complete
-Resume file: None
+Last session: 2026-02-07
+Stopped at: Plan 8-02 complete (dashboard integration)
+Resume file: `.planning/phases/8-futures-data-collection/8-02-SUMMARY.md`
 
-**Next:** Plan Phase 8 (Futures Data Collection) or deploy v1.0 to production
+**Next:** Implement Plan 8-01 (Futures Data Collection Infrastructure) to enable futures data collection
