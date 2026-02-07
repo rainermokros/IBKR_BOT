@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 9 of 9 (Trading Optimization & Analysis)
-Plan: 4 of 5 (Skew-Aware Strike Selection)
+Plan: 5 of 5 (Historical/Live Variance Analysis)
 Status: IN PROGRESS - Executing Phase 9 plans
-Last activity: 2026-02-07 — Plan 9-04 completed (Skew-Aware Strike Selection)
+Last activity: 2026-02-07 — Plan 9-05 completed (Historical/Live Variance Analysis)
 
-Progress: ███████░░░░ 60% (Phase 9 execution in progress)
+Progress: ██████████ 100% (Phase 9 complete)
 
 ## v1.0 MVP Complete
 
@@ -49,7 +49,7 @@ Progress: ███████░░░░ 60% (Phase 9 execution in progress)
 - ✅ 9-02: Configurable Infrastructure (COMPLETE)
 - ✅ 9-03: Unified Portfolio Integration (COMPLETE)
 - ✅ 9-04: Skew-Aware Strike Selection (COMPLETE)
-- [ ] 9-05: Historical/Live Variance Analysis
+- ✅ 9-05: Historical/Live Variance Analysis (COMPLETE)
 
 **Completed (9-01):**
 - DynamicTakeProfit class with regime-based TP thresholds (crash=40%, high_vol=50%, normal=80%, low_vol=90%, trending=85%, range_bound=80%)
@@ -81,6 +81,14 @@ Progress: ███████░░░░ 60% (Phase 9 execution in progress)
 - StrategySelector calculates skew before building all strategies
 - Strategy metadata includes skew_ratio and skew_interpretation
 - Binary search uses skew-adjusted delta for strike selection
+
+**Completed (9-05):**
+- StrategyPredictionsTable with Delta Lake storage for predictions at entry
+- Variance analysis methods: analyze_prediction_variance(), get_strategy_weights(), get_regime_strategy_weights()
+- Prediction tracking in EntryWorkflow with prediction_id in execution.metadata
+- Actual results update in PositionMonitoringWorkflow.update_prediction_with_actuals()
+- trading_config.yaml variance_analysis section with strategy_weights and regime_adjustments
+- Weight adjustment formula: max(0.5, 1.0 - min(mae/0.40, 0.5))
 
 **Focus:** Enhance trading performance through portfolio integration, configuration management, and analytics feedback loops
 
@@ -140,20 +148,22 @@ All key decisions from v1.0 validated and documented in PROJECT.md:
 - **IV skew ratio for strike selection** (put IV / call IV, >1.2 = high put skew, <0.8 = high call skew)
 - **Skew-adjusted delta targeting** (20% higher delta on expensive side, capped at 0.30)
 - **Graceful fallback to neutral skew** (return 1.0 when IV data unavailable)
+- **Strategy prediction tracking with Delta Lake** (stores at entry, updates at exit)
+- **MAE-based variance analysis for strategy weights** (30-day lookback, 10 prediction minimum)
 
 ### Deferred Issues
 
-None currently. All v1.0, v1.1, and v1.2 features shipped successfully.
+None currently. All v1.0, v1.1, v1.2, and v1.3 features shipped successfully.
 
 ### Pending Todos
 
-- Complete Phase 9 remaining plan (9-05)
 - Start futures data collection in production (ES, NQ, RTY)
 - After 2-4 weeks: Analyze futures correlations using dashboard tools
+- Integrate variance-adjusted weights into StrategySelector (future enhancement)
 
 ### Blockers/Concerns
 
-None. V6 is production-ready with v1.1 futures enhancement and v1.2 portfolio integration complete.
+None. V6 is production-ready with v1.1 futures enhancement, v1.2 portfolio integration, and v1.3 variance analysis complete.
 
 ## Milestones
 
@@ -178,12 +188,12 @@ None. V6 is production-ready with v1.1 futures enhancement and v1.2 portfolio in
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Plan 9-04 complete (Skew-Aware Strike Selection)
+Stopped at: Plan 9-05 complete (Historical/Live Variance Analysis)
 Resume files:
 - `.planning/phases/09-trading-optimization/9-01-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-02-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-03-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-04-SUMMARY.md`
-- `.planning/phases/09-trading-optimization/9-05-PLAN.md`
+- `.planning/phases/09-trading-optimization/9-05-SUMMARY.md`
 
-**Next:** Execute remaining Phase 9 plan (9-05)
+**Next:** Phase 9 complete. All 5 plans executed successfully.
