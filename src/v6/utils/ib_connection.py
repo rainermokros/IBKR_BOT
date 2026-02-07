@@ -2,10 +2,13 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ib_async import IB
 from loguru import logger
+
+if TYPE_CHECKING:
+    from v6.config.trading_config import IBConnectionConfig
 
 
 class CircuitState(Enum):
@@ -62,18 +65,46 @@ class IBConnectionManager:
         client_id: int = 1,
         max_retries: int = 3,
         retry_delay: float = 2.0,
+        connect_timeout: int = 10,
     ):
         self.host = host
         self.port = port
         self.client_id = client_id
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.connect_timeout = connect_timeout
         self.ib = IB()
         self.circuit_breaker = CircuitBreaker()
         self._is_connected = False
         self.heartbeat_interval = 30  # seconds
         self._heartbeat_task: Optional[asyncio.Task] = None
         self.last_heartbeat = datetime.now()
+
+    @classmethod
+    def from_config(cls, ib_connection_config: Optional["IBConnectionConfig"] = None, config_path: Optional[str] = None) -> "IBConnectionManager":
+        """
+        Create IBConnectionManager from trading config file.
+
+        Args:
+            ib_connection_config: IBConnectionConfig object (optional)
+            config_path: Path to trading config file (optional)
+
+        Returns:
+            IBConnectionManager instance
+        """
+        if ib_connection_config is None:
+            from v6.config.trading_config import load_trading_config
+            trading_config = load_trading_config(config_path)
+            ib_connection_config = trading_config.ib_connection
+
+        return cls(
+            host=ib_connection_config.host,
+            port=ib_connection_config.port,
+            client_id=ib_connection_config.client_id,
+            max_retries=ib_connection_config.max_retries,
+            retry_delay=ib_connection_config.retry_delay,
+            connect_timeout=ib_connection_config.connect_timeout,
+        )
 
     async def connect(self) -> None:
         """Connect with exponential backoff retry (Pitfall 2 from research)."""
@@ -86,7 +117,7 @@ class IBConnectionManager:
                     host=self.host,
                     port=self.port,
                     clientId=self.client_id,
-                    timeout=10
+                    timeout=self.connect_timeout
                 )
                 self._is_connected = True
                 self.circuit_breaker.record_success()
@@ -171,3 +202,54 @@ class IBConnectionManager:
             "circuit_breaker_state": self.circuit_breaker.state.value,
             "healthy": self.is_connected and age_seconds < self.heartbeat_interval * 2
         }
+
+    async def get_live_underlying_price(self, symbol: str) -> float:
+        """
+        Fetch live underlying price from IBKR.
+
+        Args:
+            symbol: Underlying symbol (e.g., "SPY")
+
+        Returns:
+            Current market price (midpoint of bid/ask)
+
+        Raises:
+            ValueError: If price cannot be fetched or is invalid
+        """
+        await self.ensure_connected()
+
+        # Create stock contract
+        import ib_async
+        contract = ib_async.Stock(
+            symbol=symbol,
+            exchange="SMART",
+            currency="USD"
+        )
+
+        # Request live data
+        try:
+            ticker = await self.ib.reqTickersAsync(contract)
+            if not ticker or len(ticker) == 0:
+                raise ValueError(f"No ticker data for {symbol}")
+
+            ticker_data = ticker[0]
+
+            # Use midpoint of bid/ask, fallback to last
+            if ticker_data.bid and ticker_data.ask:
+                price = (ticker_data.bid + ticker_data.ask) / 2
+            elif ticker_data.last:
+                price = ticker_data.last
+            elif ticker_data.close:
+                price = ticker_data.close
+            else:
+                raise ValueError(f"No valid price data for {symbol}")
+
+            if price <= 0:
+                raise ValueError(f"Invalid price for {symbol}: {price}")
+
+            logger.debug(f"Live price for {symbol}: ${price:.2f}")
+            return float(price)
+
+        except Exception as e:
+            logger.error(f"Failed to fetch live price for {symbol}: {e}")
+            raise ValueError(f"Could not fetch live price for {symbol}: {e}")
