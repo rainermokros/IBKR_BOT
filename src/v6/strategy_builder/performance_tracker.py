@@ -9,11 +9,12 @@ Key patterns:
 - Black-Scholes approximation: Real-time option pricing
 - Performance aggregation: By time range and market regime
 - Integration: Writes to performance_metrics Delta Lake table (Plan 01)
+- Variance analysis: Compares predictions vs actuals for strategy weight tuning
 """
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List, Optional
 
 import polars as pl
@@ -28,6 +29,7 @@ from v6.system_monitor.data.performance_metrics_persistence import (
     PerformanceWriter,
     PerformanceMetricsTable,
 )
+from v6.system_monitor.data.strategy_predictions import StrategyPredictionsTable
 
 
 class StrategyPerformanceTracker:
@@ -558,6 +560,200 @@ class StrategyPerformanceTracker:
             List of trade IDs with open positions
         """
         return list(self._active_trades.keys())
+
+    def analyze_prediction_variance(
+        self,
+        days: int = 30,
+        min_predictions: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Analyze prediction variance by strategy type and regime.
+
+        Calculates MAE (Mean Absolute Error), MSE (Mean Squared Error), and
+        weight adjustments for each strategy type based on prediction accuracy.
+
+        Args:
+            days: Number of days to look back for predictions
+            min_predictions: Minimum predictions required for analysis
+
+        Returns:
+            Dict with variance metrics and weight adjustments:
+                {
+                    "strategy_type": {
+                        "mean_absolute_error": float,
+                        "mean_squared_error": float,
+                        "prediction_count": int,
+                        "weight_adjustment": float,  # Multiplier for scoring
+                        "by_regime": {
+                            "regime_name": {"mae": float, "count": int}
+                        }
+                    }
+                }
+        """
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+
+        # Read predictions from StrategyPredictionsTable
+        predictions_table = StrategyPredictionsTable()
+        df = predictions_table.read_predictions(
+            start_date=start_date,
+            end_date=end_date,
+            min_predictions=0,  # Don't filter by min here, we'll check after grouping
+        )
+
+        if len(df) < min_predictions:
+            logger.warning(
+                f"Insufficient predictions for variance analysis: "
+                f"{len(df)} < {min_predictions}"
+            )
+            return {}
+
+        # Group by strategy type
+        variance_by_type = {}
+        for strategy_type in df["strategy_type"].unique().to_list():
+            type_df = df.filter(pl.col("strategy_type") == strategy_type)
+
+            # Calculate metrics
+            mae = type_df["prediction_error"].abs().mean()
+            mse = (type_df["prediction_error"] ** 2).mean()
+            count = len(type_df)
+
+            # Weight adjustment: reduce weight for high error
+            # Error 0% -> multiplier 1.0, Error 40%+ -> multiplier 0.5
+            weight_adjustment = max(0.5, 1.0 - min(abs(mae) / 0.40, 0.5))
+
+            # By regime breakdown
+            by_regime = {}
+            for regime in type_df["regime_at_entry"].unique().to_list():
+                regime_df = type_df.filter(pl.col("regime_at_entry") == regime)
+                by_regime[regime] = {
+                    "mae": float(regime_df["prediction_error"].abs().mean()),
+                    "count": len(regime_df),
+                }
+
+            variance_by_type[strategy_type] = {
+                "mean_absolute_error": float(mae),
+                "mean_squared_error": float(mse),
+                "prediction_count": count,
+                "weight_adjustment": weight_adjustment,
+                "by_regime": by_regime,
+            }
+
+        logger.info(
+            f"Variance analysis complete: {len(variance_by_type)} strategy types analyzed"
+        )
+
+        return variance_by_type
+
+    def get_strategy_weights(
+        self,
+        use_variance_adjustment: bool = True,
+        base_weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, float]:
+        """
+        Get strategy scoring weights with optional variance adjustment.
+
+        Returns adjusted weights based on historical prediction accuracy.
+        Strategies with higher prediction error get lower weights.
+
+        Args:
+            use_variance_adjustment: Whether to apply variance adjustments
+            base_weights: Optional base weights (defaults to equal weighting)
+
+        Returns:
+            Dict mapping strategy_type to weight multiplier
+        """
+        # Base weights (equal weighting by default)
+        if base_weights is None:
+            base_weights = {
+                "iron_condor": 1.0,
+                "bull_put_spread": 1.0,
+                "bear_call_spread": 1.0,
+                "iron_butterfly": 1.0,
+                "vertical_spread": 1.0,
+            }
+
+        if not use_variance_adjustment:
+            return base_weights
+
+        # Apply variance adjustments
+        variance = self.analyze_prediction_variance()
+
+        if not variance:
+            logger.debug("No variance data available, using base weights")
+            return base_weights
+
+        adjusted_weights = {}
+        for strategy_type, base_weight in base_weights.items():
+            adjustment = variance.get(strategy_type, {}).get("weight_adjustment", 1.0)
+            adjusted_weights[strategy_type] = base_weight * adjustment
+
+        logger.info(f"Adjusted strategy weights: {adjusted_weights}")
+        return adjusted_weights
+
+    def get_regime_strategy_weights(
+        self,
+        regime: str,
+        use_variance_adjustment: bool = True,
+    ) -> Dict[str, float]:
+        """
+        Get strategy weights for a specific market regime.
+
+        Combines regime-specific adjustments with variance-based adjustments
+        to provide optimized weights for current market conditions.
+
+        Args:
+            regime: Current market regime (normal, high_volatility, crash, etc.)
+            use_variance_adjustment: Whether to apply variance adjustments
+
+        Returns:
+            Dict mapping strategy_type to weight multiplier
+        """
+        # Regime-specific base weights
+        regime_base_weights = {
+            "normal": {
+                "iron_condor": 1.0,
+                "bull_put_spread": 1.0,
+                "bear_call_spread": 1.0,
+            },
+            "high_volatility": {
+                "iron_condor": 0.8,
+                "bull_put_spread": 1.0,
+                "bear_call_spread": 1.0,
+            },
+            "crash": {
+                "iron_condor": 0.5,
+                "bull_put_spread": 0.8,
+                "bear_call_spread": 1.2,
+            },
+            "trending": {
+                "iron_condor": 0.7,
+                "bull_put_spread": 1.2,
+                "bear_call_spread": 0.8,
+            },
+        }
+
+        # Get base weights for regime (default to normal)
+        base_weights = regime_base_weights.get(regime, regime_base_weights["normal"])
+
+        if not use_variance_adjustment:
+            return base_weights
+
+        # Apply variance adjustments
+        variance = self.analyze_prediction_variance()
+
+        if not variance:
+            return base_weights
+
+        adjusted_weights = {}
+        for strategy_type, base_weight in base_weights.items():
+            adjustment = variance.get(strategy_type, {}).get("weight_adjustment", 1.0)
+            adjusted_weights[strategy_type] = base_weight * adjustment
+
+        logger.info(
+            f"Regime-adjusted strategy weights (regime={regime}): {adjusted_weights}"
+        )
+        return adjusted_weights
 
     def _log(self, x: float) -> float:
         """Natural log helper."""
