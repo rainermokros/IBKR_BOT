@@ -22,44 +22,44 @@ Build a next-generation automated options trading system with advanced automatio
 - ✅ **v1.0 MVP** — Phases 1-7 (shipped 2026-01-31) — [See full details →](milestones/v1.0-ROADMAP.md)
 - ✅ **v1.1 Futures Enhancement** — Phase 8 (shipped 2026-02-07)
 
-## Current Milestone
+## Completed Milestones
 
-### v1.2 Trading Optimization — IN PROGRESS
-
-- [ ] Phase 9: Trading Optimization & Analysis (5 plans) — **PLANNED**
+- ✅ **v1.0 MVP** — Phases 1-7 (shipped 2026-01-31) — [See full details →](milestones/v1.0-ROADMAP.md)
+- ✅ **v1.1 Futures Enhancement** — Phase 8 (shipped 2026-02-07)
+- ✅ **v1.2 Trading Optimization** — Phase 9 (shipped 2026-02-07)
 
 ## Phase Details
 
-### Phase 9: Trading Optimization & Analysis 🆕 PLANNED
+### Phase 9: Trading Optimization & Analysis ✅ COMPLETE
 
 **Goal**: Enhance trading performance through dynamic profit targets, portfolio integration, configuration management, and analytics feedback loops
-**Status**: PLANNED (2026-02-07)
-**Plans**: 5 plans
+**Status**: COMPLETE (2026-02-07)
+**Plans**: 5/5 complete
 
 **Focus Areas:**
-- Quick Wins (Tier 1): Dynamic profit targets + Configurable infrastructure
-- High Value (Tier 2): Portfolio integration + Skew-aware selection + Variance analysis
+- Quick Wins (Tier 1): Dynamic profit targets + Configurable infrastructure ✅
+- High Value (Tier 2): Portfolio integration + Skew-aware selection + Variance analysis ✅
 
-**Plans:**
-- [ ] 9-01: Dynamic Profit Targets (regime-based TP adjustment)
+**Delivered:**
+- ✅ 9-01: Dynamic Profit Targets (regime-based TP adjustment)
   - DynamicTakeProfit class with regime-based thresholds (crash=40%, high_vol=50%, normal=80%, low_vol=90%)
   - Integration with EnhancedMarketRegimeDetector
   - YAML configuration for TP customization
-- [ ] 9-02: Configurable Infrastructure (centralize hardcoded values)
+- ✅ 9-02: Configurable Infrastructure (centralize hardcoded values)
   - TradingConfig dataclass following futures_config.py pattern
   - trading_config.yaml with ib_connection, refresh_intervals, trading_limits
-  - IBConnectionManager and Scheduler updated to use config
-- [ ] 9-03: Unified Portfolio Integration (connect risk calc to entry workflow)
+  - IBConnectionManager.from_config() factory method
+- ✅ 9-03: Unified Portfolio Integration (connect risk calc to entry workflow)
   - EntryWorkflow integrates PortfolioRiskCalculator
   - Portfolio delta checking before entry
   - PortfolioLimitsChecker validation in execute_entry()
-  - Factory method for fully-wired EntryWorkflow
-- [ ] 9-04: Skew-Aware Strike Selection (IV skew in strike selection)
-  - SmartStrikeSelector calculates put/call IV ratio
+  - EntryWorkflow.from_config() factory method
+- ✅ 9-04: Skew-Aware Strike Selection (IV skew in strike selection)
+  - SmartStrikeSelector.calculate_skew_ratio() for put/call IV ratio
   - Skew-adjusted target delta (higher delta on expensive side)
   - StrategySelector uses skew for strike selection
   - Skew metadata stored in strategy for analysis
-- [ ] 9-05: Historical/Live Variance Analysis (prediction vs actual feedback loop)
+- ✅ 9-05: Historical/Live Variance Analysis (prediction vs actual feedback loop)
   - StrategyPredictionsTable for storing predictions
   - Variance analysis by strategy type and regime
   - Dynamic weight adjustment based on prediction error
@@ -105,9 +105,9 @@ Build a next-generation automated options trading system with advanced automatio
 | 6. Monitoring Dashboard | 3/3 | ✅ Complete | 2026-01-27 |
 | 7. Testing & Deployment | 3/3 | ✅ Complete | 2026-01-27 |
 | 8. Futures Data Collection | 2/2 | ✅ Complete | 2026-02-07 |
-| 9. Trading Optimization | 0/5 | Planned | 2026-02-07 |
+| 9. Trading Optimization | 5/5 | ✅ Complete | 2026-02-07 |
 
-**Total:** 29 plans completed across 8 phases; Phase 9 planned (5 plans)
+**Total:** 34 plans completed across 9 phases
 
 ## V5 vs V6 Key Differences
 
