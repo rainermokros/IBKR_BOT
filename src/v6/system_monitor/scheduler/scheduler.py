@@ -10,6 +10,7 @@ Crontab Entry:
 Configuration:
 - Edit via dashboard: data/lake/scheduler_config table
 - Or directly in code: v6/data/scheduler_config.py
+- IB connection settings: config/trading_config.yaml (via TradingConfig)
 
 Features:
 - NYSE calendar aware (trading days, holidays)
@@ -17,6 +18,11 @@ Features:
 - Reads schedule from Delta Lake table
 - Executes tasks at configured times
 - Comprehensive logging
+
+Note: Task intervals (frequency: 5min, hourly, etc.) are defined per-task
+in the Delta Lake scheduler_config table, not in trading_config.yaml.
+The trading_config.yaml contains IB connection settings and default intervals
+for reference, but actual task scheduling is controlled via the table.
 """
 
 import asyncio
