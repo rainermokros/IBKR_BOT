@@ -10,6 +10,7 @@ Key features:
 - Strategy building via StrategyBuilder
 - Order execution via OrderExecutionEngine
 - Strategy persistence via StrategyRepository
+- Prediction tracking for variance analysis
 
 Usage:
     from v6.workflows import EntryWorkflow
@@ -40,6 +41,7 @@ Usage:
 
 from datetime import datetime
 from uuid import uuid4
+from typing import Optional
 
 from loguru import logger
 
@@ -68,6 +70,10 @@ from v6.risk_manager.trading_workflows.regime_sizing import RegimeAwarePositionS
 from v6.strategy_builder.decision_engine.enhanced_market_regime import EnhancedMarketRegimeDetector
 from v6.strategy_builder.decision_engine.portfolio_risk import PortfolioRiskCalculator, PortfolioRisk
 from v6.risk_manager.portfolio_limits import PortfolioLimitsChecker
+from v6.system_monitor.data.strategy_predictions import (
+    StrategyPredictionsTable,
+    StrategyPrediction,
+)
 
 # Alias for backward compatibility
 PortfolioLimitExceeded = PortfolioLimitExceededError
@@ -113,6 +119,7 @@ class EntryWorkflow:
         portfolio_limits=None,
         portfolio_risk_calc: PortfolioRiskCalculator = None,  # NEW - portfolio risk integration
         regime_sizer: RegimeAwarePositionSizer = None,  # Optional - regime-based sizing
+        track_predictions: bool = True,  # NEW - prediction tracking for variance analysis
     ):
         """
         Initialize entry workflow.
@@ -127,6 +134,7 @@ class EntryWorkflow:
             portfolio_limits: Optional PortfolioLimitsChecker for risk validation
             portfolio_risk_calc: Optional PortfolioRiskCalculator for portfolio state at entry
             regime_sizer: Optional RegimeAwarePositionSizer for regime-based sizing
+            track_predictions: Enable prediction storage for variance analysis
         """
         self.decision_engine = decision_engine
         self.execution_engine = execution_engine
@@ -137,6 +145,8 @@ class EntryWorkflow:
         self.portfolio_limits = portfolio_limits
         self.portfolio_risk_calc = portfolio_risk_calc
         self.regime_sizer = regime_sizer
+        self.track_predictions = track_predictions
+        self.predictions_table = StrategyPredictionsTable() if track_predictions else None
         self.logger = logger
 
     async def evaluate_entry_signal(
@@ -440,6 +450,41 @@ class EntryWorkflow:
                 f"delta={position_delta:.2f}, value=${position_value:,.0f}"
             )
 
+        # Step 1.75: Store prediction for variance analysis (if enabled)
+        prediction_id = None
+        if self.predictions_table and hasattr(strategy, 'metadata'):
+            # Get prediction score from strategy metadata if available
+            predicted_score = strategy.metadata.get("predicted_score", 0.0)
+            predicted_return_pct = strategy.metadata.get("expected_return_pct", 0.0)
+
+            if predicted_score > 0:
+                # Get market context for regime
+                regime = params.get("regime", "unknown")
+                iv_rank = params.get("iv_rank", 50.0)
+
+                # Create prediction record
+                prediction = StrategyPrediction(
+                    prediction_id=str(uuid4()),
+                    timestamp=datetime.now(),
+                    symbol=symbol,
+                    strategy_type=strategy_type.value,
+                    predicted_score=predicted_score,
+                    predicted_return_pct=predicted_return_pct,
+                    regime_at_entry=regime,
+                    iv_rank_at_entry=iv_rank,
+                    dte=params.get("dte", 45),
+                    strike_width=strategy.metadata.get("width", 10),
+                    entry_price=strategy.metadata.get("entry_price", 0.0),
+                )
+
+                self.predictions_table.store_prediction(prediction)
+                prediction_id = prediction.prediction_id
+
+                self.logger.debug(
+                    f"Stored prediction: {prediction_id[:8]}... "
+                    f"(score={predicted_score:.1f}, regime={regime})"
+                )
+
         # Step 2: Create StrategyExecution
         execution_id = str(uuid4())
         legs_execution = []
@@ -476,6 +521,12 @@ class EntryWorkflow:
             close_time=None,
             status=ExecutionStatus.PENDING,
         )
+
+        # Store prediction_id in execution metadata for later update
+        if prediction_id:
+            if execution.entry_params is None:
+                execution.entry_params = {}
+            execution.entry_params["prediction_id"] = prediction_id
 
         # Step 3: Place orders for each leg
         order_ids = []
