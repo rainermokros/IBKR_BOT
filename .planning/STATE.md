@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Autonomous trading with intelligent risk management and full visibility
-**Current focus:** Planning Phase 8 — Futures Data Collection
+**Current focus:** Phase 8 Futures Data Collection - COMPLETE
 
 ## Current Position
 
 Phase: 8 of 8 (Futures Data Collection)
-Plan: 2 of 2 (Dashboard Integration & Analysis)
-Status: COMPLETE - Dashboard integration done, data collection infrastructure needed
-Last activity: 2026-02-07 — Plan 8-02 completed (dashboard integration pre-existing)
+Plan: 1 of 2 (Futures Data Collection Infrastructure)
+Status: COMPLETE - Futures data collection infrastructure implemented
+Last activity: 2026-02-07 — Plan 8-01 completed (futures collection infrastructure)
 
-Progress: ████████████ 100% (Phases 1-7 complete, Phase 8 plans 1-2: 8-02 complete, 8-01 needs implementation)
+Progress: ████████████ 100% (Phase 8 complete, v1.1 milestone achieved)
 
 ## v1.0 MVP Complete
 
@@ -36,16 +36,30 @@ Progress: ████████████ 100% (Phases 1-7 complete, Phase 
 - Phase 5: Risk Management (3/3 plans)
 - Phase 6: Monitoring Dashboard (3/3 plans)
 - Phase 7: Testing & Deployment (3/3 plans)
+- Phase 8: Futures Data Collection (2/2 plans)
 
-**Total:** 8 phases, 27 plans, 2 days development
+**Total:** 8 phases, 29 plans, completed
 
-## Phase 8: Futures Data Collection
+## Phase 8: Futures Data Collection - COMPLETE
 
-**Status:** Dashboard Integration Complete (8-02), Data Collection Infrastructure Needed (8-01)
+**Status:** Phase 8 COMPLETE - v1.1 milestone achieved
 
 **Plans:**
+- ✅ 8-01: Futures Data Collection Infrastructure (COMPLETE)
 - ✅ 8-02: Dashboard Integration & Analysis (COMPLETE - pre-existing implementation)
-- ⏳ 8-01: Futures Data Collection Infrastructure (NOT STARTED - needs implementation)
+
+**Completed (8-01):**
+- FuturesFetcher using IBConnectionManager (shared connection)
+- FuturesSnapshot dataclass with all fields
+- Change metrics calculation (1h, 4h, overnight, daily)
+- Contract rollover detection (7 days before expiry)
+- Maintenance window handling (5-6pm ET)
+- Delta Lake futures_snapshots table with partitioning
+- FuturesConfig with validation
+- Rate limiting (60s wait after batch, 100 snapshot buffer)
+- Collection script with dry-run support
+- Scheduler integration (5min frequency)
+- 26 integration tests (all passing)
 
 **Completed (8-02):**
 - Futures data loader with Delta Lake integration and 30s caching
@@ -54,12 +68,6 @@ Progress: ████████████ 100% (Phases 1-7 complete, Phase 
 - Predictive value assessment (directional accuracy, signal-to-noise)
 - Streamlit futures dashboard page with real-time display
 - Dashboard navigation updated
-
-**Outstanding (8-01):**
-- Futures fetcher with IBKR integration
-- Delta Lake futures snapshots table
-- Collection scheduler and systemd service
-- Integration tests for futures collection
 
 **Objective:** Add futures data collection (ES, NQ, RTY) as leading indicators for entry signal prediction
 
@@ -92,12 +100,12 @@ Progress: ████████████ 100% (Phases 1-7 complete, Phase 
 ## Performance Metrics
 
 **v1.0 Milestone Stats:**
-- Total plans completed: 27
+- Total plans completed: 29
 - Average duration: ~3-4 hours/plan
 - Total execution time: ~100 hours (including parallel execution)
-- Files created: 74 production files
-- Lines of code: 46,741 lines of Python
-- Tests: 146 integration and unit tests
+- Files created: 77 production files
+- Lines of code: 48,400+ lines of Python
+- Tests: 172 integration and unit tests
 
 **By Phase:**
 
@@ -111,6 +119,7 @@ Progress: ████████████ 100% (Phases 1-7 complete, Phase 
 | 5. Risk Management | 3 | ~10h | ~3.3h |
 | 6. Monitoring Dashboard | 3 | ~6h | ~2h |
 | 7. Testing & Deployment | 3 | ~5h | ~1.7h |
+| 8. Futures Data Collection | 2 | ~1h | ~0.5h |
 
 ## Accumulated Context
 
@@ -134,21 +143,22 @@ All key decisions from v1.0 validated and documented in PROJECT.md:
 - **Futures dashboard with 30s cache** (Delta Lake integration for real-time display)
 - **Asof join for time-series correlation** (handles unsynchronized futures/spot timestamps)
 - **7-day minimum for futures analysis** (ensures statistical significance)
+- **Unified IBConnectionManager for futures** (shares connection with other modules)
+- **60s batch write interval for futures** (avoids small Delta Lake files)
 
 ### Deferred Issues
 
-None currently. All v1.0 features shipped successfully.
+None currently. All v1.0 and v1.1 features shipped successfully.
 
 ### Pending Todos
 
-- Implement Plan 8-01: Futures Data Collection Infrastructure
-- Start futures data collection (ES, NQ, RTY)
+- Start futures data collection in production (ES, NQ, RTY)
 - After 2-4 weeks: Analyze futures correlations using dashboard tools
 - Decision: Integrate futures data into DecisionEngine if valuable
 
 ### Blockers/Concerns
 
-None. V6 is production-ready and operational.
+None. V6 is production-ready with v1.1 futures enhancement complete.
 
 ## Milestones
 
@@ -158,14 +168,18 @@ None. V6 is production-ready and operational.
   - Comprehensive risk management
   - Production-ready deployment
 
-- 📋 **v1.1 Futures Enhancement** - Planned
-  - Phase 8: Futures Data Collection
+- ✅ **v1.1 Futures Enhancement** - Shipped 2026-02-07
+  - Phase 8 complete (2 plans)
+  - Futures data collection infrastructure (ES, NQ, RTY)
+  - Dashboard integration for futures analysis
   - Leading indicators for entry signals
 
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Plan 8-02 complete (dashboard integration)
-Resume file: `.planning/phases/8-futures-data-collection/8-02-SUMMARY.md`
+Stopped at: Plan 8-01 complete (futures collection infrastructure)
+Resume files:
+- `.planning/phases/8-futures-data-collection/8-01-SUMMARY.md`
+- `.planning/phases/8-futures-data-collection/8-02-SUMMARY.md`
 
-**Next:** Implement Plan 8-01 (Futures Data Collection Infrastructure) to enable futures data collection
+**Next:** Deploy futures collection to production and begin 2-4 week data collection period
