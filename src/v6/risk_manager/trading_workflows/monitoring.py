@@ -10,6 +10,7 @@ Key features:
 - Generate alerts via AlertManager for non-HOLD decisions
 - Run every 30 seconds (configurable)
 - Return decision results for all positions
+- Update predictions with actual results at exit
 
 Usage:
     from v6.workflows import PositionMonitoringWorkflow
@@ -29,6 +30,8 @@ Usage:
 """
 
 import asyncio
+from datetime import datetime
+from typing import Optional
 
 from loguru import logger
 
@@ -40,6 +43,7 @@ from v6.strategy_builder.models import StrategyExecution
 from v6.strategy_builder.repository import StrategyRepository
 from v6.strategy_builder.performance_tracker import StrategyPerformanceTracker
 from v6.system_monitor.data.performance_metrics_persistence import PerformanceMetricsTable, PerformanceWriter
+from v6.system_monitor.data.strategy_predictions import StrategyPredictionsTable
 
 logger = logger.bind(component="PositionMonitoringWorkflow")
 
@@ -85,6 +89,7 @@ class PositionMonitoringWorkflow:
         strategy_repo: StrategyRepository,
         trailing_stops: TrailingStopManager | None = None,
         performance_tracker: StrategyPerformanceTracker | None = None,
+        predictions_table: StrategyPredictionsTable | None = None,
         monitoring_interval: int = 30,
     ):
         """
@@ -96,6 +101,7 @@ class PositionMonitoringWorkflow:
             strategy_repo: StrategyRepository for position data
             trailing_stops: Optional TrailingStopManager for trailing stop management
             performance_tracker: Optional StrategyPerformanceTracker for UPL tracking
+            predictions_table: Optional StrategyPredictionsTable for variance analysis
             monitoring_interval: Seconds between monitoring cycles
         """
         self.decision_engine = decision_engine
@@ -103,6 +109,7 @@ class PositionMonitoringWorkflow:
         self.strategy_repo = strategy_repo
         self.trailing_stops = trailing_stops
         self.performance_tracker = performance_tracker
+        self.predictions_table = predictions_table or StrategyPredictionsTable()
         self.monitoring_interval = monitoring_interval
         self.logger = logger
 
@@ -317,6 +324,54 @@ class PositionMonitoringWorkflow:
             f"Enabled trailing stop for {execution_id[:8]}...: "
             f"entry_premium={entry_premium:.2f}"
         )
+
+    def update_prediction_with_actuals(
+        self,
+        execution: StrategyExecution,
+        actual_pnl_pct: float,
+        actual_pnl: float,
+        exit_reason: str,
+    ) -> None:
+        """
+        Update prediction record with actual P&L at position exit.
+
+        Called when a position is closed to complete the prediction vs actual
+        feedback loop for variance analysis.
+
+        Args:
+            execution: Strategy execution being closed
+            actual_pnl_pct: Actual return percentage
+            actual_pnl: Actual P&L in dollars
+            exit_reason: Reason for exit (take_profit, stop_loss, expiry, manual, roll)
+        """
+        # Get prediction_id from execution entry_params
+        prediction_id = None
+        if execution.entry_params:
+            prediction_id = execution.entry_params.get("prediction_id")
+
+        if not prediction_id:
+            self.logger.debug(
+                f"No prediction_id found for {execution.execution_id[:8]}..., "
+                "skipping prediction update"
+            )
+            return
+
+        try:
+            self.predictions_table.update_with_actuals(
+                prediction_id=prediction_id,
+                actual_pnl_pct=actual_pnl_pct,
+                actual_pnl=actual_pnl,
+                exit_time=datetime.now(),
+                exit_reason=exit_reason,
+            )
+            self.logger.info(
+                f"Updated prediction {prediction_id[:8]}... with actuals: "
+                f"pnl_pct={actual_pnl_pct:.2f}%, reason={exit_reason}"
+            )
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to update prediction {prediction_id[:8]}...: {e}"
+            )
 
     async def start_monitoring_loop(self):
         """
