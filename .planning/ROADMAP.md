@@ -15,7 +15,7 @@ Build a next-generation automated options trading system with advanced automatio
 - Better risk-adjusted returns than v5 (lower drawdown, better Sharpe ratio)
 - Full visibility into all system operations in real-time
 
-**Journey:** Architecture → Position Sync → Decision Engine → Strategy Execution → Risk Management → Dashboard → Testing → Futures Data
+**Journey:** Architecture → Position Sync → Decision Engine → Strategy Execution → Risk Management → Dashboard → Testing → Futures Data → Trading Optimization
 
 ## Completed Milestones
 
@@ -27,6 +27,11 @@ Build a next-generation automated options trading system with advanced automatio
 - ✅ **v1.0 MVP** — Phases 1-7 (shipped 2026-01-31) — [See full details →](milestones/v1.0-ROADMAP.md)
 - ✅ **v1.1 Futures Enhancement** — Phase 8 (shipped 2026-02-07)
 - ✅ **v1.2 Trading Optimization** — Phase 9 (shipped 2026-02-07)
+  - Regime-aware dynamic profit targets
+  - Centralized YAML configuration
+  - Portfolio-aware entry decisions
+  - IV skew-aware strike selection
+  - Prediction tracking with variance analysis
 
 ## Phase Details
 
