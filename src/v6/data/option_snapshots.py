@@ -400,3 +400,53 @@ class OptionSnapshotsTable:
         }
 
         return stats
+
+    def get_iv_for_strike(
+        self,
+        symbol: str,
+        strike: float,
+        right: str,
+        expiry
+    ) -> Optional[float]:
+        """
+        Get IV for specific strike from latest option snapshot.
+
+        Args:
+            symbol: Underlying symbol
+            strike: Strike price
+            right: "PUT" or "CALL"
+            expiry: Expiration date (date object or string)
+
+        Returns:
+            IV as decimal (0.20 = 20%) or None if not found
+        """
+        from datetime import datetime, timedelta
+
+        # Convert expiry to string if needed
+        if isinstance(expiry, str):
+            expiry_str = expiry
+        else:
+            expiry_str = expiry.strftime("%Y-%m-%d")
+
+        # Read latest snapshot for this strike using lazy frame for efficiency
+        try:
+            df = pl.scan_delta(str(self.table_path)) \
+                .filter(pl.col("symbol") == symbol) \
+                .filter(pl.col("strike") == strike) \
+                .filter(pl.col("right") == right.upper()) \
+                .filter(pl.col("expiry") == expiry_str) \
+                .filter(pl.col("timestamp") > (datetime.now() - timedelta(hours=24))) \
+                .select(["iv", "timestamp"]) \
+                .sort("timestamp", descending=True) \
+                .limit(1) \
+                .collect()
+
+            if len(df) > 0 and df.row(0)[0] is not None:
+                iv = df.row(0)[0]
+                # IV stored as percentage (20.0 = 20%), convert to decimal
+                return iv / 100.0 if iv > 1 else iv
+
+        except Exception as e:
+            logger.debug(f"No IV found for {symbol} ${strike} {right} {expiry_str}: {e}")
+
+        return None
