@@ -64,6 +64,9 @@ from v6.strategy_builder.models import (
     StrategyType,
 )
 from v6.strategy_builder.repository import StrategyRepository
+from v6.risk_manager.trading_workflows.regime_sizing import RegimeAwarePositionSizer
+from v6.strategy_builder.decision_engine.enhanced_market_regime import EnhancedMarketRegimeDetector
+from v6.strategy_builder.decision_engine.portfolio_risk import PortfolioRiskCalculator, PortfolioRisk
 
 # Alias for backward compatibility
 PortfolioLimitExceeded = PortfolioLimitExceededError
@@ -78,10 +81,12 @@ class EntryWorkflow:
     Evaluates entry conditions, builds strategies, and executes entry orders.
 
     **Entry Signal Criteria:**
-    - IV Rank >50 (sell premium) or <25 (buy premium)
-    - VIX not in extreme range (not >35)
     - Portfolio has capacity (delta limits not exceeded)
-    - No conflicting positions
+    - Position count not exceeded per symbol
+    - Underlying price is valid
+
+    **NOTE:** IV Rank and VIX filters REMOVED - let StrategySelector
+    scoring decide which strategy is appropriate for current conditions.
 
     **Workflow:**
     1. evaluate_entry_signal(): Check market and portfolio conditions
@@ -105,6 +110,8 @@ class EntryWorkflow:
         max_portfolio_delta: float = 0.3,
         max_positions_per_symbol: int = 5,
         portfolio_limits=None,
+        portfolio_risk_calc: PortfolioRiskCalculator = None,  # NEW - portfolio risk integration
+        regime_sizer: RegimeAwarePositionSizer = None,  # Optional - regime-based sizing
     ):
         """
         Initialize entry workflow.
@@ -117,6 +124,8 @@ class EntryWorkflow:
             max_portfolio_delta: Maximum net portfolio delta allowed
             max_positions_per_symbol: Maximum positions per symbol
             portfolio_limits: Optional PortfolioLimitsChecker for risk validation
+            portfolio_risk_calc: Optional PortfolioRiskCalculator for portfolio state at entry
+            regime_sizer: Optional RegimeAwarePositionSizer for regime-based sizing
         """
         self.decision_engine = decision_engine
         self.execution_engine = execution_engine
@@ -125,6 +134,8 @@ class EntryWorkflow:
         self.max_portfolio_delta = max_portfolio_delta
         self.max_positions_per_symbol = max_positions_per_symbol
         self.portfolio_limits = portfolio_limits
+        self.portfolio_risk_calc = portfolio_risk_calc
+        self.regime_sizer = regime_sizer
         self.logger = logger
 
     async def evaluate_entry_signal(
@@ -135,16 +146,21 @@ class EntryWorkflow:
         """
         Evaluate if entry signal is valid.
 
-        Checks market conditions (IV Rank, VIX, underlying trend) and
-        portfolio constraints (delta limits, exposure limits, position count).
+        **Portfolio Constraints Only:**
+        - Portfolio has delta capacity
+        - Position count not exceeded
+        - Underlying price is valid
+
+        **NOTE:** IV Rank and VIX filtering REMOVED - let StrategySelector
+        scoring decide which strategy is appropriate for current conditions.
 
         Args:
             symbol: Underlying symbol (e.g., "SPY")
             market_data: Market data dict with keys:
-                - iv_rank: IV rank percentile (0-100)
-                - vix: Current VIX value
+                - iv_rank: IV rank percentile (0-100) - logged only
+                - vix: Current VIX value - logged only
                 - underlying_price: Current underlying price
-                - portfolio_delta: Current net portfolio delta (optional)
+                - portfolio_delta: Current net portfolio delta (optional, overridden by calculator)
                 - position_count: Current open positions for symbol (optional)
 
         Returns:
@@ -159,24 +175,37 @@ class EntryWorkflow:
         portfolio_delta = market_data.get("portfolio_delta", 0.0)
         position_count = market_data.get("position_count", 0)
 
-        # Check 1: IV Rank conditions
-        # - IV Rank >50: Good for selling premium (iron condors, credit spreads)
-        # - IV Rank <25: Good for buying premium (debit spreads)
-        if iv_rank < 25 or iv_rank > 50:
-            self.logger.debug(f"✓ IV Rank check passed: {iv_rank}")
-        else:
-            self.logger.info(f"✗ IV Rank check failed: {iv_rank} (not in entry range)")
-            return False
+        # Log IV Rank and VIX for context (not filtered)
+        self.logger.info(f"  Market context: IV Rank={iv_rank:.1f}, VIX={vix:.1f}")
 
-        # Check 2: VIX not in extreme range
-        # - VIX >35 indicates extreme volatility, avoid entries
-        if vix < 35:
-            self.logger.debug(f"✓ VIX check passed: {vix}")
-        else:
-            self.logger.info(f"✗ VIX check failed: {vix} (too high)")
-            return False
+        # NEW: Get portfolio risk if calculator available
+        if self.portfolio_risk_calc:
+            try:
+                portfolio_risk: PortfolioRisk = await self.portfolio_risk_calc.calculate_portfolio_risk()
+                portfolio_delta = portfolio_risk.greeks.delta
+                market_data["portfolio_delta"] = portfolio_delta
 
-        # Check 3: Portfolio has delta capacity
+                # Update position count from portfolio risk if available
+                if position_count == 0 and portfolio_risk.position_count > 0:
+                    # Get count for this specific symbol if available
+                    symbol_delta = portfolio_risk.greeks.delta_per_symbol.get(symbol, 0.0)
+                    # If symbol has delta, it has at least one position
+                    if symbol_delta != 0.0:
+                        position_count = 1  # Conservative estimate
+                        market_data["position_count"] = position_count
+
+                self.logger.info(
+                    f"  Portfolio state: delta={portfolio_delta:.2f}, "
+                    f"gamma={portfolio_risk.greeks.gamma:.2f}, "
+                    f"positions={portfolio_risk.position_count}, "
+                    f"symbols={portfolio_risk.symbol_count}"
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to calculate portfolio risk: {e}, using provided portfolio_delta")
+        else:
+            self.logger.debug("No PortfolioRiskCalculator - using provided portfolio_delta")
+
+        # Check 1: Portfolio has delta capacity
         if abs(portfolio_delta) < self.max_portfolio_delta:
             self.logger.debug(f"✓ Portfolio delta check passed: {portfolio_delta}")
         else:
@@ -186,7 +215,7 @@ class EntryWorkflow:
             )
             return False
 
-        # Check 4: Position count per symbol
+        # Check 2: Position count per symbol
         if position_count < self.max_positions_per_symbol:
             self.logger.debug(f"✓ Position count check passed: {position_count}")
         else:
@@ -196,7 +225,7 @@ class EntryWorkflow:
             )
             return False
 
-        # Check 5: Underlying price is valid
+        # Check 3: Underlying price is valid
         if underlying_price > 0:
             self.logger.debug(f"✓ Underlying price check passed: ${underlying_price}")
         else:
@@ -205,6 +234,57 @@ class EntryWorkflow:
 
         # All checks passed
         self.logger.info(f"✓ Entry signal validated for {symbol}")
+        return True
+
+    async def verify_strike_freshness(
+        self,
+        symbol: str,
+        stored_price: float,
+        ib_conn
+    ) -> bool:
+        """
+        Verify underlying price against live IBKR data.
+
+        Rejects order if stored price differs from live price by more than 0.5%.
+        This prevents execution errors from stale Delta Lake snapshots.
+
+        Args:
+            symbol: Underlying symbol
+            stored_price: Price from Delta Lake snapshot
+            ib_conn: IBConnectionManager instance for live price fetch
+
+        Returns:
+            True if price is fresh (within 0.5%), False if stale
+
+        Raises:
+            ValueError: If live price cannot be fetched
+        """
+        try:
+            live_price = await ib_conn.get_live_underlying_price(symbol)
+        except ValueError as e:
+            self.logger.error(f"Cannot verify strike freshness: {e}")
+            # Fail closed - reject order if we can't verify
+            raise ValueError(f"Cannot verify live price for {symbol}: {e}")
+
+        # Calculate percentage difference
+        if stored_price <= 0:
+            raise ValueError(f"Invalid stored price for {symbol}: {stored_price}")
+
+        pct_diff = abs(live_price - stored_price) / stored_price
+        threshold = 0.005  # 0.5%
+
+        if pct_diff > threshold:
+            self.logger.warning(
+                f"STALE DATA for {symbol}: "
+                f"stored=${stored_price:.2f}, live=${live_price:.2f}, "
+                f"difference={pct_diff*100:.2f}% > {threshold*100:.1f}%"
+            )
+            return False
+
+        self.logger.info(
+            f"✓ Price freshness verified for {symbol}: "
+            f"${live_price:.2f} (diff={pct_diff*100:.2f}%)"
+        )
         return True
 
     async def execute_entry(
@@ -251,6 +331,37 @@ class EntryWorkflow:
             raise ValueError(f"Strategy validation failed: {strategy}")
 
         self.logger.info(f"✓ Strategy built: {strategy}")
+
+        # Step 1.25: Apply regime-aware position sizing if configured
+        if self.regime_sizer:
+            original_quantity = params.get("quantity", 1)
+
+            # Get market context for regime detection
+            iv_rank = params.get("iv_rank", 50.0)
+            vix = params.get("vix", 18.0)
+            underlying_price = params.get("underlying_price", strategy.legs[0].underlying_price if strategy.legs else 0.0)
+
+            adjusted_quantity = await self.regime_sizer.adjust_position_size(
+                symbol=symbol,
+                base_quantity=original_quantity,
+                current_iv_rank=iv_rank,
+                current_vix=vix,
+                underlying_price=underlying_price,
+            )
+
+            if adjusted_quantity != original_quantity:
+                self.logger.info(
+                    f"Regime-aware sizing applied: {symbol} "
+                    f"{original_quantity} -> {adjusted_quantity}"
+                )
+
+                # Rebuild strategy with adjusted quantity
+                params["quantity"] = adjusted_quantity
+                strategy = await builder.build(symbol, underlying_price, params)
+
+                # Validate again with new quantity
+                if not builder.validate(strategy):
+                    raise ValueError(f"Strategy validation failed after regime adjustment: {strategy}")
 
         # Step 1.5: Check portfolio limits (if checker provided)
         if self.portfolio_limits:

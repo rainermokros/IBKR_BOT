@@ -18,12 +18,12 @@ Decision tree:
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
+from deltalake import DeltaTable
 from loguru import logger
-
-from v6.system_monitor.data.repositories.positions import PositionsRepository
 
 
 @dataclass(slots=True)
@@ -254,24 +254,33 @@ class PortfolioRiskCalculator:
     decision rules that need portfolio context (delta risk limits, gamma exposure,
     concentration checks).
 
+    Reads positions directly from the Delta Lake positions table.
+
     Attributes:
-        position_repo: Repository for accessing position data
+        positions_path: Path to Delta Lake positions table
 
     Example:
-        >>> calc = PortfolioRiskCalculator(PositionRepository())
+        >>> calc = PortfolioRiskCalculator()
         >>> risk = await calc.calculate_portfolio_risk()
         >>> print(risk.greeks.delta)
         0.5
     """
 
-    def __init__(self, position_repo: PositionsRepository):
+    def __init__(self, positions_path: str | None = None):
         """
         Initialize the portfolio risk calculator.
 
         Args:
-            position_repo: Repository for accessing position data
+            positions_path: Path to Delta Lake positions table
+                           (default: data/lake/positions)
         """
-        self.position_repo = position_repo
+        if positions_path is None:
+            # Default path to positions table
+            project_root = Path(__file__).parent.parent.parent.parent
+            positions_path = project_root / "data" / "lake" / "positions"
+
+        self.positions_path = Path(positions_path)
+        self.logger = logger.bind(component="PortfolioRiskCalculator")
 
     async def calculate_portfolio_risk(self, account_id: Optional[int] = None) -> PortfolioRisk:
         """
@@ -287,11 +296,26 @@ class PortfolioRiskCalculator:
             PortfolioRisk with aggregated Greeks, exposure, and counts
 
         Note:
-            Uses Polars for efficient aggregation when >10 positions.
-            Falls back to simple aggregation for small portfolios.
+            Reads from Delta Lake positions table using Polars for efficient aggregation.
+            Returns empty portfolio state if table doesn't exist or has no data.
         """
-        # Fetch all open positions
-        df = self.position_repo.get_open_positions()
+        # Fetch all open positions from Delta Lake
+        df: pl.DataFrame
+
+        try:
+            if not DeltaTable.is_deltatable(str(self.positions_path)):
+                self.logger.warning(f"Positions table not found at {self.positions_path}, using empty portfolio")
+                df = pl.DataFrame()
+            else:
+                # Read positions using LazyFrame for efficiency
+                df = pl.scan_delta(str(self.positions_path))
+                # Filter for open positions (status = 'open')
+                if "status" in df.collect_schema().names():
+                    df = df.filter(pl.col("status") == "open")
+                df = df.collect()
+        except Exception as e:
+            self.logger.warning(f"Failed to read positions table: {e}, using empty portfolio")
+            df = pl.DataFrame()
 
         # Handle empty portfolio
         if df.is_empty():
@@ -457,12 +481,23 @@ class PortfolioRiskCalculator:
         Returns:
             PortfolioGreeks with per-symbol aggregates
         """
-        # Fetch positions for symbol
-        df = self.position_repo.get_by_symbol(symbol)
+        # Fetch positions for symbol from Delta Lake
+        df: pl.DataFrame
 
-        # Filter for open positions
-        if "status" in df.columns:
-            df = df.filter(pl.col("status") == "open")
+        try:
+            if not DeltaTable.is_deltatable(str(self.positions_path)):
+                df = pl.DataFrame()
+            else:
+                # Read and filter by symbol
+                df = pl.scan_delta(str(self.positions_path))
+                if "symbol" in df.collect_schema().names():
+                    df = df.filter(pl.col("symbol") == symbol)
+                if "status" in df.collect_schema().names():
+                    df = df.filter(pl.col("status") == "open")
+                df = df.collect()
+        except Exception as e:
+            self.logger.warning(f"Failed to read positions for {symbol}: {e}")
+            df = pl.DataFrame()
 
         # Handle no positions
         if df.is_empty():
@@ -539,27 +574,32 @@ class PortfolioRiskCalculator:
         # Check max single position
         # We need to identify which position is the max
         # This requires recalculating with symbol tracking
-        df = self.position_repo.get_open_positions()
-        if not df.is_empty():
-            try:
-                if "strike" in df.columns and "quantity" in df.columns:
-                    df_with_value = df.with_columns(
-                        (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
-                    )
-                    total_exposure = df_with_value["position_value"].sum()
-                    if total_exposure > 0:
-                        max_pos = df_with_value.group_by("symbol").agg(
-                            pl.col("position_value").sum().alias("exposure")
+        try:
+            if DeltaTable.is_deltatable(str(self.positions_path)):
+                df = pl.scan_delta(str(self.positions_path))
+                if "status" in df.collect_schema().names():
+                    df = df.filter(pl.col("status") == "open")
+                df = df.collect()
+
+                if not df.is_empty():
+                    if "strike" in df.columns and "quantity" in df.columns:
+                        df_with_value = df.with_columns(
+                            (pl.col("quantity") * pl.col("strike") * 100).alias("position_value")
                         )
-                        for symbol, exposure in zip(
-                            max_pos["symbol"].to_list(),
-                            max_pos["exposure"].to_list(),
-                            strict=True
-                        ):
-                            if (exposure / total_exposure) > max_position_pct:
-                                over_limit.append(symbol)
-            except Exception as e:
-                logger.warning(f"Could not check position limits: {e}")
+                        total_exposure = df_with_value["position_value"].sum()
+                        if total_exposure > 0:
+                            max_pos = df_with_value.group_by("symbol").agg(
+                                pl.col("position_value").sum().alias("exposure")
+                            )
+                            for symbol, exposure in zip(
+                                max_pos["symbol"].to_list(),
+                                max_pos["exposure"].to_list(),
+                                strict=True
+                            ):
+                                if (exposure / total_exposure) > max_position_pct:
+                                    over_limit.append(symbol)
+        except Exception as e:
+            logger.warning(f"Could not check position limits: {e}")
 
         # Check correlated exposure
         for sector, exposure_pct in risk.exposure.correlated_exposure.items():
