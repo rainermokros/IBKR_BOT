@@ -11,8 +11,9 @@ Client IDs:
 """
 
 import asyncio
+from datetime import datetime, time, timedelta
 from typing import List, Dict, Optional
-from ib_async import IB, Stock, Option
+from ib_async import IB, Stock, Option, Future
 from loguru import logger
 
 
@@ -311,6 +312,197 @@ class IBWrapper:
             import traceback
             traceback.print_exc()
             return []
+
+    async def get_futures_snapshot(self, symbol: str) -> Optional[Dict]:
+        """
+        Get futures snapshot for a symbol.
+
+        Fetches real-time futures data for ES, NQ, RTY.
+        Calculates change metrics from historical data.
+
+        Args:
+            symbol: Futures symbol (ES, NQ, RTY)
+
+        Returns:
+            Dictionary with futures snapshot data or None if error
+        """
+        if not self._connected:
+            raise ConnectionError("Not connected to IB Gateway")
+
+        # Check for maintenance window (5-6pm ET)
+        now_time = datetime.now().time()
+        maintenance_start = time(17, 0)
+        maintenance_end = time(18, 0)
+
+        if maintenance_start <= now_time < maintenance_end:
+            logger.warning("Maintenance window (5-6pm ET) - returning empty snapshot")
+            return None
+
+        # Futures contract specifications
+        futures_specs = {
+            "ES": {"exchange": "CME", "currency": "USD"},
+            "NQ": {"exchange": "CME", "currency": "USD"},
+            "RTY": {"exchange": "CME", "currency": "USD"},
+        }
+
+        if symbol not in futures_specs:
+            logger.error(f"Invalid futures symbol: {symbol}")
+            return None
+
+        try:
+            spec = futures_specs[symbol]
+
+            # Get current month and next month for expiry
+            now = datetime.now()
+            year_months = []
+            for month_offset in range(6):
+                target_date = now + timedelta(days=month_offset * 30)
+                year_month = target_date.strftime("%Y%m")
+                year_months.append(year_month)
+
+            # Try to find a valid contract
+            contract = None
+            for year_month in year_months:
+                try:
+                    test_contract = Future(
+                        symbol=symbol,
+                        lastTradeDateOrContractMonth=year_month,
+                        exchange=spec["exchange"],
+                        currency=spec["currency"],
+                    )
+
+                    qualified = await self.ib.qualifyContractsAsync(test_contract)
+                    if qualified:
+                        contract = qualified[0]
+                        break
+                except Exception:
+                    continue
+
+            if not contract:
+                # Fallback to continuous contract
+                contract = Future(
+                    symbol=symbol,
+                    exchange=spec["exchange"],
+                    currency=spec["currency"],
+                )
+                qualified = await self.ib.qualifyContractsAsync(contract)
+                if not qualified:
+                    logger.error(f"Could not qualify futures contract for {symbol}")
+                    return None
+                contract = qualified[0]
+
+            # Request market data
+            ticker = self.ib.reqMktData(contract, "", False, False)
+            await asyncio.sleep(1)
+
+            # Get current price
+            if ticker.last:
+                current_price = ticker.last
+            elif ticker.bid and ticker.ask:
+                current_price = (ticker.bid + ticker.ask) / 2
+            elif ticker.close:
+                current_price = ticker.close
+            else:
+                logger.warning(f"No price data for {symbol}")
+                return None
+
+            # Calculate change metrics from historical data
+            change_metrics = await self._calculate_futures_changes(contract, current_price)
+
+            snapshot = {
+                "symbol": symbol,
+                "timestamp": datetime.now(),
+                "bid": float(ticker.bid) if ticker.bid else None,
+                "ask": float(ticker.ask) if ticker.ask else None,
+                "last_price": float(ticker.last) if ticker.last else None,
+                "volume": int(ticker.volume) if hasattr(ticker, 'volume') and ticker.volume else None,
+                "open_interest": int(ticker.openInterest) if hasattr(ticker, 'openInterest') and ticker.openInterest else None,
+                "implied_vol": float(ticker.impliedVolatility) if hasattr(ticker, 'impliedVolatility') and ticker.impliedVolatility else None,
+                "change_1h": change_metrics.get("change_1h"),
+                "change_4h": change_metrics.get("change_4h"),
+                "change_overnight": change_metrics.get("change_overnight"),
+                "change_daily": change_metrics.get("change_daily"),
+                "expiry": contract.lastTradeDateOrContractMonth,
+            }
+
+            # Cancel market data
+            self.ib.cancelMktData(contract)
+
+            logger.debug(f"✓ Got futures snapshot for {symbol}: {snapshot['last_price']}")
+            return snapshot
+
+        except Exception as e:
+            logger.error(f"Error getting futures snapshot for {symbol}: {e}")
+            return None
+
+    async def _calculate_futures_changes(
+        self,
+        contract,
+        current_price: float
+    ) -> Dict[str, Optional[float]]:
+        """
+        Calculate change metrics from historical data.
+
+        Args:
+            contract: IB futures contract
+            current_price: Current futures price
+
+        Returns:
+            Dictionary with change metrics
+        """
+        metrics = {
+            "change_1h": None,
+            "change_4h": None,
+            "change_overnight": None,
+            "change_daily": None,
+        }
+
+        try:
+            # Fetch 1-hour bars for last 24 hours
+            bars = await self.ib.reqHistoricalDataAsync(
+                contract,
+                endDateTime=datetime.now(),
+                durationStr="1 D",
+                barSizeSetting="1 hour",
+                whatToShow="TRADES",
+                useRTH=False,
+            )
+
+            if not bars or len(bars) < 2:
+                return metrics
+
+            # 1-hour change
+            if len(bars) >= 2:
+                price_1h = bars[-2].close if bars[-2] else None
+                if price_1h and price_1h > 0:
+                    metrics["change_1h"] = ((current_price - price_1h) / price_1h) * 100
+
+            # 4-hour change
+            if len(bars) >= 5:
+                price_4h = bars[-5].close if bars[-5] else None
+                if price_4h and price_4h > 0:
+                    metrics["change_4h"] = ((current_price - price_4h) / price_4h) * 100
+
+            # Daily change (from previous day's close)
+            daily_bars = await self.ib.reqHistoricalDataAsync(
+                contract,
+                endDateTime=datetime.now(),
+                durationStr="2 D",
+                barSizeSetting="1 day",
+                whatToShow="TRADES",
+                useRTH=True,
+            )
+
+            if daily_bars and len(daily_bars) >= 2:
+                prev_close = daily_bars[-2].close
+                if prev_close and prev_close > 0:
+                    metrics["change_daily"] = ((current_price - prev_close) / prev_close) * 100
+                    metrics["change_overnight"] = metrics["change_daily"]
+
+        except Exception as e:
+            logger.warning(f"Error calculating futures changes: {e}")
+
+        return metrics
 
     async def __aenter__(self):
         """Async context manager entry."""
