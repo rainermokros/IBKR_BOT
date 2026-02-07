@@ -34,9 +34,17 @@ backup:
 health_check:
   interval_seconds: 60   # Seconds between health checks
 
+# Futures Data Collection
+futures:
+  enabled: true           # Enable futures data collection (ES, NQ, RTY)
+  symbols: ["ES", "NQ", "RTY"]
+  collection_interval_seconds: 300   # 5 minutes
+  ib_client_id: 9981      # Client ID for futures collection (see CLIENT_ID_REFERENCE.md)
+
 # Notes:
 # 1. Set dry_run: false ONLY when you're ready for live trading
 # 2. IB Gateway must be running before starting the system
 # 3. Ensure log and backup directories are writable
 # 4. Configure alert_webhook_url to receive critical alerts
 # 5. Monitor system health via dashboard (http://localhost:8501)
+# 6. Futures data collected every 5 minutes during market hours for leading indicators

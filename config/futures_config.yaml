@@ -1,0 +1,61 @@
+# Futures Data Collection Configuration
+#
+# Configuration for futures data collection (ES, NQ, RTY)
+# Futures are collected every 5 minutes during market hours
+# Maintenance window: 5-6pm ET (expected data gaps)
+
+# Enable/disable futures collection
+enabled: true
+
+# Symbols to collect (ES = E-mini S&P 500, NQ = E-mini Nasdaq 100, RTY = E-mini Russell 2000)
+symbols:
+  - ES
+  - NQ
+  - RTY
+
+# Collection interval in seconds (default: 300 = 5 minutes)
+collection_interval: 300
+
+# Batch write interval in seconds (default: 60 = 1 minute)
+# Avoids small Delta Lake files by batching writes
+batch_write_interval: 60
+
+# Batch size threshold (write when buffer reaches this size)
+batch_size: 100
+
+# Maintenance window (ET) - data collection skipped during this time
+maintenance_window:
+  start: "17:00"  # 5:00 PM ET
+  end: "18:00"    # 6:00 PM ET
+
+# Contract rollover settings
+contract_rollover:
+  days_before_expiry: 7  # Roll to next contract 7 days before expiry
+
+# IB Gateway connection settings
+ib_connection:
+  host: "127.0.0.1"
+  port: 4002
+  client_id: 9981  # From CLIENT_ID_REFERENCE.md
+
+# Collection settings
+collection:
+  timeout: 60  # seconds
+  max_retries: 2
+  retry_delay: 5  # seconds
+
+# Delta Lake storage path
+storage:
+  table_path: "data/lake/futures_snapshots"
+
+# Rate limiting settings
+rate_limiting:
+  wait_after_batch: 60  # seconds to wait after completing a batch
+  max_requests_per_minute: 12  # maximum requests per minute
+
+# Change metrics calculation
+change_metrics:
+  enable_1h: true
+  enable_4h: true
+  enable_overnight: true
+  enable_daily: true
