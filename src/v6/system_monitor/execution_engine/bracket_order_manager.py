@@ -32,7 +32,7 @@ from uuid import uuid4
 
 from ib_async import Contract, LimitOrder, StopOrder
 
-from v6.execution.engine import OrderExecutionEngine
+from v6.system_monitor.execution_engine.engine import OrderExecutionEngine
 from v6.system_monitor.execution_engine.models import (
     BracketOrder,
     ExecutionResult,

@@ -1,8 +1,21 @@
 """
-Alert Routing System
+Alert Routing System (DEPRECATED - Use alert_system/manager.py instead)
 
 This module provides alert management with routing to Slack, email, and logging.
-Implements rate limiting to prevent alert spam while ensuring critical alerts get through.
+
+**DEPRECATION NOTICE:**
+This module is deprecated in favor of the enhanced AlertManager in:
+- v6/system_monitor/alert_system/manager.py (persistent, Delta Lake backed)
+
+The simple AlertManager in this file is maintained for:
+- Legacy dashboard components
+- Slack/email notifications without persistence
+- CorrelationDivergenceMonitor (see v6/monitoring/correlation_monitor.py)
+
+Migration path:
+- For new code: use v6.system_monitor.alert_system.manager.AlertManager
+- For dashboard: use v6.system_monitor.dashboard.data.alerts
+- For correlation monitoring: use v6.monitoring.correlation_monitor.CorrelationDivergenceMonitor
 
 Key features:
 - Multi-channel alerts: Slack webhook, email, logging

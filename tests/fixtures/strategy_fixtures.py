@@ -17,7 +17,7 @@ import pytest
 from datetime import date, datetime
 from typing import Optional
 
-from src.v6.strategies.models import (
+from v6.strategy_builder.models import (
     ExecutionStatus,
     LegAction,
     LegSpec,

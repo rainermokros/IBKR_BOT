@@ -181,13 +181,8 @@ def calculate_position_metrics(df: pl.DataFrame) -> dict[str, float]:
 
     Returns:
         Dictionary with metrics:
-        - portfolio_delta: Net delta (placeholder - requires Greeks from option_snapshots)
-        - unrealized_pnl: Total unrealized P&L (placeholder - requires market data)
-
-    Note:
-        This is a placeholder implementation. Real implementation will:
-        - Join with option_snapshots table for Greeks
-        - Calculate unrealized P&L from current market prices
+        - portfolio_delta: Net delta (from stored Greeks in legs_json)
+        - unrealized_pnl: Total unrealized P&L (from stored P&L data)
     """
     if df.is_empty():
         return {
@@ -195,11 +190,34 @@ def calculate_position_metrics(df: pl.DataFrame) -> dict[str, float]:
             "unrealized_pnl": 0.0,
         }
 
-    # Placeholder: Return zeros until Greeks are available
-    # TODO: Implement real calculation in Plan 2 after Greeks are tracked
+    # Calculate delta from legs_json
+    portfolio_delta = 0.0
+    unrealized_pnl = 0.0
+
+    for row in df.iter_rows(named=True):
+        try:
+            legs = json.loads(row["legs_json"]) if row["legs_json"] else []
+            for leg in legs:
+                # Get delta from Greeks if available
+                if leg.get("greeks"):
+                    delta = float(leg["greeks"].get("delta", 0.0))
+                    quantity = int(leg.get("quantity", 1))
+                    action = leg.get("action", "BUY")
+
+                    # Apply sign: BUY = positive, SELL = negative
+                    sign = -1 if action == "SELL" else 1
+                    portfolio_delta += delta * quantity * sign
+
+                # Get unrealized P&L if available
+                if "unrealized_pnl" in leg:
+                    unrealized_pnl += float(leg["unrealized_pnl"])
+
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            continue
+
     return {
-        "portfolio_delta": 0.0,
-        "unrealized_pnl": 0.0,
+        "portfolio_delta": portfolio_delta,
+        "unrealized_pnl": unrealized_pnl,
     }
 
 

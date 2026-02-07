@@ -31,7 +31,7 @@ from typing import Optional
 
 from v6.system_monitor.alert_system.manager import AlertManager
 from v6.system_monitor.data.repositories import StrategyRepository
-from v6.execution.engine import OrderExecutionEngine
+from v6.system_monitor.execution_engine.engine import OrderExecutionEngine
 from v6.models.decisions import Decision, DecisionAction, Urgency
 from v6.models.strategy import Strategy
 from v6.workflows.exit import ExitWorkflow

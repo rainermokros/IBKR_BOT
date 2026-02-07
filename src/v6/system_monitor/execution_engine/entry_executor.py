@@ -15,13 +15,20 @@ from typing import List, Optional
 
 from loguru import logger
 
-from v6.execution.engine import OrderExecutionEngine
-from v6.indicators.iv_rank import IVRankCalculator
+from v6.system_monitor.execution_engine.engine import OrderExecutionEngine
 from v6.strategy_builder.builders import IronCondorBuilder
 from v6.strategy_builder.builders import VerticalSpreadBuilder
 from v6.strategy_builder.builders import IronCondorBuilder
 from v6.strategy_builder.models import Strategy
 from v6.utils.ib_connection import IBConnectionManager
+
+
+# Stub IVRankCalculator - TODO: implement when IV rank calculation is needed
+class IVRankCalculator:
+    """Stub IV rank calculator - placeholder for future implementation."""
+
+    def __init__(self, lookback_days: int = 60):
+        self.lookback_days = lookback_days
 
 
 class EntryExecutor:
@@ -329,8 +336,11 @@ class EntryExecutor:
         """
         Get current underlying price from IB.
 
+        Uses reqMktData() with snapshot mode to get real-time prices.
+        Implements caching to avoid excessive API calls.
+
         Args:
-            symbol: Underlying symbol
+            symbol: Underlying symbol (SPY, QQQ, IWM, etc.)
 
         Returns:
             Current price
@@ -338,10 +348,20 @@ class EntryExecutor:
         Raises:
             ValueError: If price cannot be retrieved
         """
-        # For now, use a stub implementation
-        # In production, this would query IB for real-time price
+        from ib_async import Stock
+        import asyncio
+
+        # Check cache first (5 second TTL)
+        cache_key = f"price_{symbol}"
+        if hasattr(self, '_price_cache') and cache_key in self._price_cache:
+            cached_price, cached_time = self._price_cache[cache_key]
+            age = (asyncio.get_event_loop().time() - cached_time)
+            if age < 5.0:  # 5 second cache
+                logger.debug(f"Using cached price for {symbol}: ${cached_price:.2f}")
+                return cached_price
+
+        # Dry run mode
         if self.dry_run:
-            # Return mock prices for testing
             mock_prices = {
                 'SPY': 500.0,
                 'QQQ': 450.0,
@@ -351,8 +371,43 @@ class EntryExecutor:
             logger.debug(f"Using mock price for {symbol}: ${price:.2f}")
             return price
 
-        # Production implementation would go here
-        raise NotImplementedError("Real-time price retrieval not implemented yet")
+        # Production implementation using IB
+        try:
+            await self.ib_conn.ensure_connected()
+
+            # Create stock contract
+            stock = Stock(symbol, 'SMART', 'USD')
+
+            # Request market data (snapshot mode)
+            ticker = self.ib_conn.ib.reqMktData(stock, "", False, True)
+
+            # Wait for data to arrive
+            await asyncio.sleep(0.5)
+
+            # Get price from ticker
+            price = ticker.marketPrice()
+
+            if price is None or price <= 0:
+                # Try last price as fallback
+                price = ticker.last
+                if price is None or price <= 0:
+                    # Try midpoint of bid/ask
+                    if ticker.bid and ticker.ask:
+                        price = (ticker.bid + ticker.ask) / 2
+                    else:
+                        raise ValueError(f"Unable to get valid price for {symbol}")
+
+            # Cache the price
+            if not hasattr(self, '_price_cache'):
+                self._price_cache = {}
+            self._price_cache[cache_key] = (price, asyncio.get_event_loop().time())
+
+            logger.debug(f"Retrieved real-time price for {symbol}: ${price:.2f}")
+            return price
+
+        except Exception as e:
+            logger.error(f"Failed to get price for {symbol}: {e}")
+            raise ValueError(f"Unable to retrieve price for {symbol}: {e}")
 
     def _validate_entry(self, strategy: Strategy):
         """

@@ -186,8 +186,66 @@ class StrategySelector:
         target_dte: int,
         use_smart_lookup: bool
     ) -> Strategy:
-        """Build Bear Call Spread (not yet implemented)."""
-        raise NotImplementedError("Bear call spread not yet implemented with current builders")
+        """Build Bear Call Spread (credit spread: sell OTM call, buy higher strike call)."""
+        import polars as pl
+        from deltalake import DeltaTable
+        from v6.strategy_builder.models import LegSpec, OptionRight, LegAction, Strategy, StrategyType
+        from datetime import datetime, date, timedelta
+
+        dt = DeltaTable('data/lake/option_snapshots')
+        df = pl.from_pandas(dt.to_pandas())
+        symbol_df = df.filter(pl.col('symbol') == symbol)
+        strikes = symbol_df.select('strike').unique().sort('strike').get_column('strike').to_list()
+        underlying_price = (min(strikes) + max(strikes)) / 2
+
+        # Bear call spread: Sell OTM call, buy higher strike call (credit spread)
+        width = 10
+        expiration = date.today() + timedelta(days=target_dte)
+
+        # Short strike at or slightly above current price (OTM for bearish view)
+        short_strike = round((underlying_price * 1.02) / 5) * 5
+        long_strike = short_strike + width
+
+        legs = [
+            # Short Call (OTM, receives premium)
+            LegSpec(
+                right=OptionRight.CALL,
+                strike=short_strike,
+                quantity=quantity,
+                action=LegAction.SELL,
+                expiration=expiration
+            ),
+            # Long Call (higher strike, protection)
+            LegSpec(
+                right=OptionRight.CALL,
+                strike=long_strike,
+                quantity=quantity,
+                action=LegAction.BUY,
+                expiration=expiration
+            ),
+        ]
+
+        strategy = Strategy(
+            strategy_id=f"BCS_{symbol}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            symbol=symbol,
+            strategy_type=StrategyType.VERTICAL_SPREAD,
+            legs=legs,
+            entry_time=datetime.now(),
+            status="OPEN",
+            metadata={
+                'strategy_name': 'Bear Call Spread',
+                'direction': 'BEAR_CALL_CREDIT',
+                'width': width,
+                'dte': target_dte,
+                'quantity': quantity,
+                'underlying_price': underlying_price,
+                'short_strike': short_strike,
+                'long_strike': long_strike,
+            }
+        )
+
+        logger.info(f"Built Bear Call Spread for {symbol}: short ${short_strike} call, long ${long_strike} call")
+        return strategy
 
     def _analyze_strategy(
         self,
