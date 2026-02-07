@@ -22,6 +22,7 @@ class Urgency(str, Enum):
     """Urgency level for decision/action."""
     IMMEDIATE = "IMMEDIATE"  # Act now (within seconds)
     HIGH = "HIGH"           # Act soon (within minutes)
+    NORMAL = "NORMAL"       # Normal priority (default for most decisions)
     MEDIUM = "MEDIUM"       # Act this hour
     LOW = "LOW"            # Act today
 
