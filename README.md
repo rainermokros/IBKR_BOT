@@ -242,4 +242,4 @@ Proprietary - All rights reserved
 
 ---
 
-**Last updated:** 2026-01-27
+**Last updated:** 2026-02-07 (v1.2 Trading Optimization)

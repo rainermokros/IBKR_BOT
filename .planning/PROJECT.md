@@ -4,7 +4,7 @@
 
 Next-generation automated options trading system for personal account with fully autonomous strategy execution, comprehensive risk management, and real-time monitoring.
 
-**Current Version:** v1.0 MVP (Shipped 2026-01-31)
+**Current Version:** v1.2 Trading Optimization (Shipped 2026-02-07)
 
 ## Core Value
 
@@ -12,19 +12,31 @@ Next-generation automated options trading system for personal account with fully
 
 ## Requirements
 
-### Validated (v1.0)
+### Validated (v1.2)
 
-- ✓ Fully automated strategy entry (Iron Condors, vertical spreads) — v1.0
-- ✓ 12 priority-based decision rules (catastrophe, trailing stop, time exit, take profit, stop loss, delta/gamma risk, IV crush, DTE roll, VIX exit, portfolio limits) — v1.0
-- ✓ Real-time position synchronization (IB <-> Delta Lake) — v1.0
-- ✓ Comprehensive risk management (exit rules + portfolio controls + real-time protection) — v1.0
-- ✓ Enhanced monitoring dashboard (real-time alerts, Greeks, P/L, positions) — v1.0
-- ✓ IB connection management (auto-reconnect, circuit breaker, heartbeat) — v1.0
-- ✓ Delta Lake persistence (ACID transactions, time-travel) — v1.0
+**v1.0 MVP:**
+- ✓ Fully automated strategy entry (Iron Condors, vertical spreads)
+- ✓ 12 priority-based decision rules (catastrophe, trailing stop, time exit, take profit, stop loss, delta/gamma risk, IV crush, DTE roll, VIX exit, portfolio limits)
+- ✓ Real-time position synchronization (IB <-> Delta Lake)
+- ✓ Comprehensive risk management (exit rules + portfolio controls + real-time protection)
+- ✓ Enhanced monitoring dashboard (real-time alerts, Greeks, P/L, positions)
+- ✓ IB connection management (auto-reconnect, circuit breaker, heartbeat)
+- ✓ Delta Lake persistence (ACID transactions, time-travel)
+
+**v1.1 Futures Enhancement:**
+- ✓ Futures data collection (ES, NQ, RTY leading indicators)
+- ✓ Delta Lake futures_snapshots with change metrics
+- ✓ Dashboard integration for futures display
+
+**v1.2 Trading Optimization:**
+- ✓ Regime-aware dynamic profit targets (DynamicTakeProfit class)
+- ✓ Centralized YAML configuration (TradingConfig, trading_config.yaml)
+- ✓ Portfolio-aware entry decisions (EntryWorkflow integrates PortfolioRiskCalculator)
+- ✓ IV skew-aware strike selection (SmartStrikeSelector with skew ratio calculation)
+- ✓ Prediction variance analysis (StrategyPredictionsTable, MAE/MSE tracking)
 
 ### Active
 
-- [ ] Futures data collection (ES, NQ, RTY leading indicators) — Planned for Phase 8
 - [ ] ML model integration for strategy optimization — Deferred to future versions
 
 ### Out of Scope
@@ -41,7 +53,7 @@ Next-generation automated options trading system for personal account with fully
 
 ## Context
 
-**Current State (v1.0):**
+**Current State (v1.2):**
 
 V6 MVP is complete and production-ready. The system delivers:
 
