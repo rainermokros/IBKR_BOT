@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 9 of 9 (Trading Optimization & Analysis)
-Plan: 1 of 5 (Dynamic Profit Targets)
+Plan: 4 of 5 (Skew-Aware Strike Selection)
 Status: IN PROGRESS - Executing Phase 9 plans
-Last activity: 2026-02-07 — Plan 9-01 completed (Dynamic Profit Targets)
+Last activity: 2026-02-07 — Plan 9-04 completed (Skew-Aware Strike Selection)
 
-Progress: ███░░░░░░░░ 20% (Phase 9 execution started)
+Progress: ███████░░░░ 60% (Phase 9 execution in progress)
 
 ## v1.0 MVP Complete
 
@@ -48,7 +48,7 @@ Progress: ███░░░░░░░░ 20% (Phase 9 execution started)
 - ✅ 9-01: Dynamic Profit Targets (COMPLETE)
 - ✅ 9-02: Configurable Infrastructure (COMPLETE)
 - ✅ 9-03: Unified Portfolio Integration (COMPLETE)
-- [ ] 9-04: Skew-Aware Strike Selection
+- ✅ 9-04: Skew-Aware Strike Selection (COMPLETE)
 - [ ] 9-05: Historical/Live Variance Analysis
 
 **Completed (9-01):**
@@ -73,6 +73,14 @@ Progress: ███░░░░░░░░ 20% (Phase 9 execution started)
 - Rejection logging shows clear reason (delta exceeded, concentration, etc.)
 - EntryWorkflow.from_config() factory method creates fully-wired instance
 - PortfolioRiskCalculator fixed to read from Delta Lake (removed non-existent repository)
+
+**Completed (9-04):**
+- SmartStrikeSelector.calculate_skew_ratio() for put/call IV ratio calculation
+- SmartStrikeSelector.adjust_target_delta_for_skew() for delta adjustment based on skew
+- OptionSnapshotsTable.get_iv_for_strike() for IV data retrieval from Delta Lake
+- StrategySelector calculates skew before building all strategies
+- Strategy metadata includes skew_ratio and skew_interpretation
+- Binary search uses skew-adjusted delta for strike selection
 
 **Focus:** Enhance trading performance through portfolio integration, configuration management, and analytics feedback loops
 
@@ -129,6 +137,9 @@ All key decisions from v1.0 validated and documented in PROJECT.md:
 - **IBConnectionManager.from_config() factory** (backward compatible with direct params)
 - **PortfolioRiskCalculator reads Delta Lake directly** (no repository layer needed)
 - **EntryWorkflow.from_config() for easy instantiation** (factory pattern for portfolio integration)
+- **IV skew ratio for strike selection** (put IV / call IV, >1.2 = high put skew, <0.8 = high call skew)
+- **Skew-adjusted delta targeting** (20% higher delta on expensive side, capped at 0.30)
+- **Graceful fallback to neutral skew** (return 1.0 when IV data unavailable)
 
 ### Deferred Issues
 
@@ -136,7 +147,7 @@ None currently. All v1.0, v1.1, and v1.2 features shipped successfully.
 
 ### Pending Todos
 
-- Complete Phase 9 remaining plans (9-01, 9-04, 9-05)
+- Complete Phase 9 remaining plan (9-05)
 - Start futures data collection in production (ES, NQ, RTY)
 - After 2-4 weeks: Analyze futures correlations using dashboard tools
 
@@ -167,13 +178,12 @@ None. V6 is production-ready with v1.1 futures enhancement and v1.2 portfolio in
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Plan 9-01 complete (Dynamic Profit Targets)
+Stopped at: Plan 9-04 complete (Skew-Aware Strike Selection)
 Resume files:
 - `.planning/phases/09-trading-optimization/9-01-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-02-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-03-SUMMARY.md`
-- `.planning/phases/09-trading-optimization/9-04-PLAN.md`
-- `.planning/phases/09-trading-optimization/9-05-PLAN.md`
+- `.planning/phases/09-trading-optimization/9-04-SUMMARY.md`
 - `.planning/phases/09-trading-optimization/9-05-PLAN.md`
 
-**Next:** Execute remaining Phase 9 plans (9-01, 9-04, 9-05)
+**Next:** Execute remaining Phase 9 plan (9-05)
