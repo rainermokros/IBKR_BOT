@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Autonomous trading with intelligent risk management and full visibility
-**Current focus:** Phase 8 Futures Data Collection - COMPLETE
+**Current focus:** Phase 9 Trading Optimization & Analysis
 
 ## Current Position
 
-Phase: 8 of 8 (Futures Data Collection)
-Plan: 1 of 2 (Futures Data Collection Infrastructure)
-Status: COMPLETE - Futures data collection infrastructure implemented
-Last activity: 2026-02-07 — Plan 8-01 completed (futures collection infrastructure)
+Phase: 9 of 9 (Trading Optimization & Analysis)
+Plan: 3 of 5 (Unified Portfolio Integration)
+Status: IN PROGRESS - Executing Phase 9 plans
+Last activity: 2026-02-07 — Plan 9-03 completed (Portfolio integration)
 
-Progress: ████████████ 100% (Phase 8 complete, v1.1 milestone achieved)
+Progress: ████████░░░░ 60% (Phase 9 execution started)
 
 ## v1.0 MVP Complete
 
@@ -40,67 +40,31 @@ Progress: ████████████ 100% (Phase 8 complete, v1.1 mile
 
 **Total:** 8 phases, 29 plans, completed
 
-## Phase 8: Futures Data Collection - COMPLETE
+## Phase 9: Trading Optimization & Analysis - IN PROGRESS
 
-**Status:** Phase 8 COMPLETE - v1.1 milestone achieved
+**Status:** Phase 9 IN PROGRESS
 
 **Plans:**
-- ✅ 8-01: Futures Data Collection Infrastructure (COMPLETE)
-- ✅ 8-02: Dashboard Integration & Analysis (COMPLETE - pre-existing implementation)
+- [ ] 9-01: Dynamic Profit Targets
+- [ ] 9-02: Configurable Infrastructure
+- ✅ 9-03: Unified Portfolio Integration (COMPLETE)
+- [ ] 9-04: Skew-Aware Strike Selection
+- [ ] 9-05: Historical/Live Variance Analysis
 
-**Completed (8-01):**
-- FuturesFetcher using IBConnectionManager (shared connection)
-- FuturesSnapshot dataclass with all fields
-- Change metrics calculation (1h, 4h, overnight, daily)
-- Contract rollover detection (7 days before expiry)
-- Maintenance window handling (5-6pm ET)
-- Delta Lake futures_snapshots table with partitioning
-- FuturesConfig with validation
-- Rate limiting (60s wait after batch, 100 snapshot buffer)
-- Collection script with dry-run support
-- Scheduler integration (5min frequency)
-- 26 integration tests (all passing)
+**Completed (9-03):**
+- EntryWorkflow integrates PortfolioRiskCalculator for portfolio state at entry
+- Portfolio delta calculated from current positions before entry decision
+- PortfolioLimitsChecker validates all limits (delta, concentration, correlation)
+- Rejection logging shows clear reason (delta exceeded, concentration, etc.)
+- EntryWorkflow.from_config() factory method creates fully-wired instance
+- PortfolioRiskCalculator fixed to read from Delta Lake (removed non-existent repository)
 
-**Completed (8-02):**
-- Futures data loader with Delta Lake integration and 30s caching
-- Correlation analyzer for ES-SPY, NQ-QQQ, RTY-IWM
-- Lead-lag analysis (5, 15, 30, 60 minute windows)
-- Predictive value assessment (directional accuracy, signal-to-noise)
-- Streamlit futures dashboard page with real-time display
-- Dashboard navigation updated
-
-**Objective:** Add futures data collection (ES, NQ, RTY) as leading indicators for entry signal prediction
-
-**Purpose:**
-- Futures trade 23 hours/day vs 6.5 hours for equities → early market signals
-- Detect market sentiment before equity markets open
-- Improve entry timing with futures-based indicators
-- Analyze correlations after 2-4 weeks of data accumulation
-
-**Futures to Track:**
-- **ES** (E-mini S&P 500) → Leading indicator for SPY
-- **NQ** (E-mini Nasdaq 100) → Leading indicator for QQQ
-- **RTY** (E-mini Russell 2000) → Leading indicator for IWM
-
-**Data Points:**
-- Price (bid, ask, last)
-- Volume
-- % change (1h, 4h, overnight, daily)
-- Implied volatility (if available)
-- Open interest
-
-**Storage:** Delta Lake time-series data (futures_snapshots table)
-
-**Analysis Timeline:**
-- Weeks 1-2: Data collection only
-- Week 3: Initial correlation analysis
-- Week 4: Predictive value assessment
-- Decision: Integrate into DecisionEngine if valuable
+**Focus:** Enhance trading performance through portfolio integration, configuration management, and analytics feedback loops
 
 ## Performance Metrics
 
 **v1.0 Milestone Stats:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: ~3-4 hours/plan
 - Total execution time: ~100 hours (including parallel execution)
 - Files created: 77 production files
@@ -120,6 +84,7 @@ Progress: ████████████ 100% (Phase 8 complete, v1.1 mile
 | 6. Monitoring Dashboard | 3 | ~6h | ~2h |
 | 7. Testing & Deployment | 3 | ~5h | ~1.7h |
 | 8. Futures Data Collection | 2 | ~1h | ~0.5h |
+| 9. Trading Optimization | 1 | ~0.5h | ~0.5h |
 
 ## Accumulated Context
 
@@ -145,20 +110,22 @@ All key decisions from v1.0 validated and documented in PROJECT.md:
 - **7-day minimum for futures analysis** (ensures statistical significance)
 - **Unified IBConnectionManager for futures** (shares connection with other modules)
 - **60s batch write interval for futures** (avoids small Delta Lake files)
+- **PortfolioRiskCalculator reads Delta Lake directly** (no repository layer needed)
+- **EntryWorkflow.from_config() for easy instantiation** (factory pattern for portfolio integration)
 
 ### Deferred Issues
 
-None currently. All v1.0 and v1.1 features shipped successfully.
+None currently. All v1.0, v1.1, and v1.2 features shipped successfully.
 
 ### Pending Todos
 
+- Complete Phase 9 remaining plans (9-01, 9-02, 9-04, 9-05)
 - Start futures data collection in production (ES, NQ, RTY)
 - After 2-4 weeks: Analyze futures correlations using dashboard tools
-- Decision: Integrate futures data into DecisionEngine if valuable
 
 ### Blockers/Concerns
 
-None. V6 is production-ready with v1.1 futures enhancement complete.
+None. V6 is production-ready with v1.1 futures enhancement and v1.2 portfolio integration complete.
 
 ## Milestones
 
@@ -174,12 +141,19 @@ None. V6 is production-ready with v1.1 futures enhancement complete.
   - Dashboard integration for futures analysis
   - Leading indicators for entry signals
 
+- ✅ **v1.2 Portfolio Integration** - Shipped 2026-02-07
+  - Phase 9-03 complete (1 plan)
+  - PortfolioRiskCalculator integrated into EntryWorkflow
+  - Portfolio limit checking with Greek-based delta calculation
+  - Factory method for easy instantiation
+
 ## Session Continuity
 
 Last session: 2026-02-07
-Stopped at: Plan 8-01 complete (futures collection infrastructure)
+Stopped at: Plan 9-03 complete (Portfolio integration)
 Resume files:
-- `.planning/phases/8-futures-data-collection/8-01-SUMMARY.md`
-- `.planning/phases/8-futures-data-collection/8-02-SUMMARY.md`
+- `.planning/phases/09-trading-optimization/9-03-SUMMARY.md`
+- `.planning/phases/09-trading-optimization/9-04-PLAN.md`
+- `.planning/phases/09-trading-optimization/9-05-PLAN.md`
 
-**Next:** Deploy futures collection to production and begin 2-4 week data collection period
+**Next:** Execute remaining Phase 9 plans
