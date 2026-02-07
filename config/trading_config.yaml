@@ -47,3 +47,34 @@ profit_targets:
 
   # Override settings (optional)
   use_regime_tp: true      # Enable regime-based TP (false = use fixed 80%)
+
+# Variance Analysis Configuration
+# Manages prediction vs actual tracking for strategy weight tuning
+variance_analysis:
+  enabled: true
+  lookback_days: 30              # Days of predictions to analyze
+  min_predictions: 10            # Minimum predictions required for analysis
+  weight_adjustment_factor: 0.5  # Max weight reduction for high error (0-1)
+
+  # Strategy-specific base weights
+  strategy_weights:
+    iron_condor: 1.0             # Base weight for Iron Condor
+    bull_put_spread: 1.0         # Base weight for Bull Put Spread
+    bear_call_spread: 1.0        # Base weight for Bear Call Spread
+    iron_butterfly: 1.0          # Base weight for Iron Butterfly
+    vertical_spread: 1.0         # Base weight for Vertical Spread
+
+  # Regime-specific adjustments
+  # Multipliers applied to base weights during specific market regimes
+  regime_adjustments:
+    normal: 1.0                  # No adjustment in normal markets
+    high_volatility: 0.8         # Reduce weights in high vol
+    crash: 0.5                   # Reduce weights significantly in crash
+    trending: 1.0                # No adjustment in trending
+    range_bound: 1.0             # No adjustment in range-bound
+
+  # Prediction error thresholds
+  # If MAE exceeds these thresholds, weights are reduced
+  error_thresholds:
+    warning: 0.20                # 20% error triggers warning
+    critical: 0.40               # 40% error triggers max weight reduction
