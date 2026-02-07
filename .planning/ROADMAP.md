@@ -20,22 +20,25 @@ Build a next-generation automated options trading system with advanced automatio
 ## Completed Milestones
 
 - ✅ **v1.0 MVP** — Phases 1-7 (shipped 2026-01-31) — [See full details →](milestones/v1.0-ROADMAP.md)
+- ✅ **v1.1 Futures Enhancement** — Phase 8 (shipped 2026-02-07)
 
 ## Current Milestone
 
-### v1.1 Futures Data Enhancement (Planned)
+### v1.1 Futures Enhancement — COMPLETE ✅
 
-- [ ] Phase 8: Futures Data Collection (0/TBD plans)
+- [x] Phase 8: Futures Data Collection (2/2 plans) — **COMPLETED 2026-02-07**
+
+**Plans Completed:**
+- 8-01: Futures Data Collection Infrastructure (FuturesFetcher, Delta Lake persistence, rate limiting, 26 tests)
+- 8-02: Dashboard Integration & Analysis (verified pre-existing implementation)
 
 ## Phase Details
 
-### Phase 8: Futures Data Collection 🆕
+### Phase 8: Futures Data Collection ✅ COMPLETE
 
 **Goal**: Add futures data collection (ES, NQ, RTY) for enhanced entry signal prediction
-**Depends on**: Phase 7
-**Research**: Unlikely (IB futures data is standard)
-**Research topics**: IB futures contract specifications, continuous futures data, correlation analysis
-**Plans**: TBD
+**Status**: COMPLETE (2026-02-07)
+**Plans**: 2/2 complete
 
 **Purpose:**
 - Collect futures data as leading indicators for market direction
@@ -47,6 +50,16 @@ Build a next-generation automated options trading system with advanced automatio
 - **ES** (E-mini S&P 500) - Leading indicator for SPY
 - **NQ** (E-mini Nasdaq 100) - Leading indicator for QQQ
 - **RTY** (E-mini Russell 2000) - Leading indicator for IWM
+
+**Delivered:**
+- FuturesFetcher using unified IBConnectionManager
+- Delta Lake futures_snapshots table with partitioning
+- Change metrics calculation (1h, 4h, overnight, daily)
+- Contract rollover detection (7 days before expiry)
+- Maintenance window handling (5-6pm ET)
+- Dashboard integration for real-time display
+- Correlation analysis tools (lead-lag, predictive value)
+- 26 integration tests (all passing)
 
 ## Progress
 
@@ -60,7 +73,9 @@ Build a next-generation automated options trading system with advanced automatio
 | 5. Risk Management | 3/3 | ✅ Complete | 2026-01-26 |
 | 6. Monitoring Dashboard | 3/3 | ✅ Complete | 2026-01-27 |
 | 7. Testing & Deployment | 3/3 | ✅ Complete | 2026-01-27 |
-| 8. Futures Data Collection | 0/TBD | Not started | - |
+| 8. Futures Data Collection | 2/2 | ✅ Complete | 2026-02-07 |
+
+**Total:** 29 plans completed across 8 phases
 
 ## V5 vs V6 Key Differences
 
