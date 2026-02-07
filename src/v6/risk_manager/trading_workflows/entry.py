@@ -53,7 +53,7 @@ from v6.system_monitor.execution_engine.models import (
     OrderType,
     TimeInForce,
 )
-from v6.risk_manager.models import PortfolioLimitExceededError
+from v6.risk_manager.models import PortfolioLimitExceededError, RiskLimitsConfig
 from v6.strategy_builder.builders import StrategyBuilder
 from v6.strategy_builder.models import (
     ExecutionStatus,
@@ -67,6 +67,7 @@ from v6.strategy_builder.repository import StrategyRepository
 from v6.risk_manager.trading_workflows.regime_sizing import RegimeAwarePositionSizer
 from v6.strategy_builder.decision_engine.enhanced_market_regime import EnhancedMarketRegimeDetector
 from v6.strategy_builder.decision_engine.portfolio_risk import PortfolioRiskCalculator, PortfolioRisk
+from v6.risk_manager.portfolio_limits import PortfolioLimitsChecker
 
 # Alias for backward compatibility
 PortfolioLimitExceeded = PortfolioLimitExceededError
@@ -575,3 +576,79 @@ class EntryWorkflow:
         )
 
         return execution
+
+    @classmethod
+    def from_config(
+        cls,
+        decision_engine: DecisionEngine,
+        execution_engine: OrderExecutionEngine,
+        strategy_repo: StrategyRepository,
+        trading_config=None,
+    ) -> "EntryWorkflow":
+        """
+        Create EntryWorkflow with portfolio integration from config.
+
+        Factory method that creates a fully-wired EntryWorkflow with all
+        portfolio components (risk calculator, limits checker) configured.
+
+        Args:
+            decision_engine: DecisionEngine for signal evaluation
+            execution_engine: OrderExecutionEngine for order placement
+            strategy_repo: StrategyRepository for persistence
+            trading_config: Optional trading config dict with keys:
+                - max_portfolio_delta: Maximum portfolio delta (default: 50.0)
+                - max_per_symbol_delta: Max delta per symbol (default: 25.0)
+                - max_portfolio_gamma: Maximum portfolio gamma (default: 2.0)
+                - max_single_position_pct: Max position as % (default: 0.02)
+                - max_correlated_pct: Max correlated exposure % (default: 0.05)
+                - max_positions_per_symbol: Max positions per symbol (default: 5)
+
+        Returns:
+            EntryWorkflow with portfolio risk calculator and limits checker wired
+
+        Example:
+            >>> workflow = EntryWorkflow.from_config(
+            ...     decision_engine=decision_engine,
+            ...     execution_engine=execution_engine,
+            ...     strategy_repo=strategy_repo
+            ... )
+        """
+        # Set default limits if not provided
+        if trading_config is None:
+            trading_config = {}
+
+        # Extract limits with defaults
+        max_portfolio_delta = trading_config.get("max_portfolio_delta", 50.0)
+        max_per_symbol_delta = trading_config.get("max_per_symbol_delta", max_portfolio_delta * 0.5)
+        max_portfolio_gamma = trading_config.get("max_portfolio_gamma", 2.0)
+        max_single_position_pct = trading_config.get("max_single_position_pct", 0.02)
+        max_correlated_pct = trading_config.get("max_correlated_pct", 0.05)
+        max_positions_per_symbol = trading_config.get("max_positions_per_symbol", 5)
+
+        # Create portfolio risk calculator
+        portfolio_risk_calc = PortfolioRiskCalculator()
+
+        # Create portfolio limits checker
+        limits = RiskLimitsConfig(
+            max_portfolio_delta=max_portfolio_delta,
+            max_per_symbol_delta=max_per_symbol_delta,
+            max_portfolio_gamma=max_portfolio_gamma,
+            max_single_position_pct=max_single_position_pct,
+            max_correlated_pct=max_correlated_pct,
+            total_exposure_cap=None,  # No cap by default
+        )
+
+        portfolio_limits = PortfolioLimitsChecker(
+            risk_calculator=portfolio_risk_calc,
+            limits=limits,
+        )
+
+        return cls(
+            decision_engine=decision_engine,
+            execution_engine=execution_engine,
+            strategy_repo=strategy_repo,
+            portfolio_risk_calc=portfolio_risk_calc,
+            portfolio_limits=portfolio_limits,
+            max_portfolio_delta=max_portfolio_delta,
+            max_positions_per_symbol=max_positions_per_symbol,
+        )
