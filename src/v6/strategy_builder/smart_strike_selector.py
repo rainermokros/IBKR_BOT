@@ -50,12 +50,29 @@ class SmartStrikeSelector:
         target_delta: float,
         underlying_price: float,
         get_delta_func: callable,
+        skew_ratio: float = 1.0,
         max_iterations: int = 10
     ) -> Tuple[float, float]:
         """
         Find strike with target delta using binary search.
+
+        Args:
+            skew_ratio: IV put/call ratio, used to adjust target delta
+
+        Returns:
+            (strike, delta) tuple
         """
-        logger.info(f"Binary search for {right} strike with delta ≈ {target_delta:.2f}")
+        # Adjust target delta based on skew
+        adjusted_delta = self.adjust_target_delta_for_skew(
+            target_delta=target_delta,
+            skew_ratio=skew_ratio,
+            option_right=right,
+        )
+
+        logger.info(
+            f"Binary search for {right} strike: target_delta={target_delta:.2f}, "
+            f"skew_ratio={skew_ratio:.2f}, adjusted_delta={adjusted_delta:.2f}"
+        )
 
         std_dev = self.calculate_std_deviation(underlying_price)
         self.strike_interval = self.estimate_strike_interval(underlying_price)
@@ -92,10 +109,10 @@ class SmartStrikeSelector:
                 pivot_strike += self.strike_interval
                 continue
 
-            logger.info(f"Iteration {iteration}: Strike ${pivot_strike:.0f}, Delta={delta_abs:.3f}, Target={target_delta:.2f}")
+            logger.info(f"Iteration {iteration}: Strike ${pivot_strike:.0f}, Delta={delta_abs:.3f}, Target={adjusted_delta:.2f}")
 
-            # Check if within tolerance
-            error = abs(delta_abs - target_delta)
+            # Check if within tolerance (use adjusted_delta for comparison)
+            error = abs(delta_abs - adjusted_delta)
             if error < best_error:
                 best_error = error
                 best_strike = pivot_strike
@@ -112,8 +129,8 @@ class SmartStrikeSelector:
                 # Puts: Negative delta
                 # If |delta| > target: Too OTM, move closer to ATM (higher strike)
                 # If |delta| < target: Too close to ATM, move further OTM (lower strike)
-                
-                if delta_abs > target_delta:
+
+                if delta_abs > adjusted_delta:
                     # Too OTM, move closer to ATM (higher strike)
                     pivot_strike = self._round_to_interval(pivot_strike + self.strike_interval)
                 else:
@@ -124,8 +141,8 @@ class SmartStrikeSelector:
                 # Calls: Positive delta
                 # If delta > target: Too OTM, move closer to ATM (lower strike)
                 # If delta < target: Too close to ATM, move further OTM (higher strike)
-                
-                if pivot_delta > target_delta:
+
+                if pivot_delta > adjusted_delta:
                     # Too OTM, move closer to ATM (lower strike)
                     pivot_strike = self._round_to_interval(pivot_strike - self.strike_interval)
                 else:
@@ -143,3 +160,84 @@ class SmartStrikeSelector:
         """Round price to nearest strike interval."""
         interval = self.strike_interval if self.strike_interval else 1.0
         return round(price / interval) * interval
+
+    def calculate_skew_ratio(
+        self,
+        symbol: str,
+        underlying_price: float,
+        target_dte: int,
+        get_iv_func: callable,
+    ) -> float:
+        """
+        Calculate IV skew ratio (put IV / call IV).
+
+        Returns:
+            float: Skew ratio (>1.0 = put skew elevated, <1.0 = call skew elevated)
+
+        Interpretation:
+            > 1.2: High put skew - market fears downside, favor selling puts
+            < 0.8: High call skew - market fears upside, favor selling calls
+            ~1.0: Balanced skew
+        """
+        # Get IV for symmetric OTM puts and calls
+        std_dev = self.calculate_std_deviation(underlying_price)
+        put_strike = self._round_to_interval(underlying_price - std_dev)
+        call_strike = self._round_to_interval(underlying_price + std_dev)
+
+        try:
+            put_iv = get_iv_func(put_strike, "PUT")
+            call_iv = get_iv_func(call_strike, "CALL")
+
+            if call_iv <= 0 or put_iv <= 0:
+                logger.warning(f"Invalid IV values: put_iv={put_iv}, call_iv={call_iv}")
+                return 1.0  # Neutral skew
+
+            skew_ratio = put_iv / call_iv
+            logger.info(
+                f"Skew ratio: {skew_ratio:.2f} "
+                f"(put IV: {put_iv:.2%} @ ${put_strike:.0f}, "
+                f"call IV: {call_iv:.2%} @ ${call_strike:.0f})"
+            )
+            return skew_ratio
+
+        except Exception as e:
+            logger.warning(f"Failed to calculate skew ratio: {e}")
+            return 1.0  # Default to neutral
+
+    def adjust_target_delta_for_skew(
+        self,
+        target_delta: float,
+        skew_ratio: float,
+        option_right: str,
+    ) -> float:
+        """
+        Adjust target delta based on skew ratio.
+
+        When skew is elevated, we can accept higher delta (closer to ATM)
+        on the expensive side to receive more credit.
+
+        Args:
+            target_delta: Base target delta (e.g., 0.20)
+            skew_ratio: IV put/call ratio
+            option_right: "PUT" or "CALL"
+
+        Returns:
+            Adjusted target delta
+        """
+        # No adjustment for balanced skew
+        if 0.8 <= skew_ratio <= 1.2:
+            return target_delta
+
+        # High put skew (>1.2): puts expensive, accept higher delta on puts
+        if skew_ratio > 1.2 and option_right == "PUT":
+            adjusted = target_delta * 1.2  # Accept 20% higher delta
+            logger.debug(f"Skew adjustment: put delta {target_delta:.2f} -> {adjusted:.2f} (high put skew)")
+            return min(adjusted, 0.30)  # Cap at 0.30
+
+        # High call skew (<0.8): calls expensive, accept higher delta on calls
+        if skew_ratio < 0.8 and option_right == "CALL":
+            adjusted = target_delta * 1.2  # Accept 20% higher delta
+            logger.debug(f"Skew adjustment: call delta {target_delta:.2f} -> {adjusted:.2f} (high call skew)")
+            return min(adjusted, 0.30)  # Cap at 0.30
+
+        return target_delta
