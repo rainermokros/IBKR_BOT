@@ -16,15 +16,18 @@ Metrics:
 - Probability of success (from delta)
 - Expected return
 - IV rank context
+- IV skew (put/call ratio)
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import List, Dict, Optional
 from loguru import logger
 
 from v6.strategy_builder.builders import IronCondorBuilder, VerticalSpreadBuilder
 from v6.strategy_builder.models import Strategy
+from v6.data.underlying_price import UnderlyingPriceService
+from v6.data.option_snapshots import OptionSnapshotsTable
 
 
 @dataclass(slots=True)
@@ -54,10 +57,16 @@ class StrategySelector:
     4. Rank and recommend best
     """
 
-    def __init__(self):
-        """Initialize strategy builders."""
+    def __init__(self, price_service: Optional[UnderlyingPriceService] = None):
+        """
+        Initialize strategy builders.
+
+        Args:
+            price_service: Optional UnderlyingPriceService for consistent pricing
+        """
         self.ic_builder = IronCondorBuilder()
         self.vsb_builder = VerticalSpreadBuilder()
+        self.price_service = price_service
 
     async def analyze_all_strategies(
         self,
@@ -131,26 +140,36 @@ class StrategySelector:
         target_dte: int,
         use_smart_lookup: bool
     ) -> Strategy:
-        """Build Iron Condor."""
-        # Estimate underlying price from option data
-        import polars as pl
-        from deltalake import DeltaTable
+        """Build Iron Condor with skew-aware strike selection."""
+        # Get underlying price from centralized service or fallback to Delta Lake
+        if self.price_service:
+            try:
+                underlying_price = await self.price_service.get_price(symbol)
+            except Exception as e:
+                logger.warning(f"Price service failed for {symbol}: {e}, using Delta Lake fallback")
+                underlying_price = await self._get_underlying_from_deltalake(symbol)
+        else:
+            underlying_price = await self._get_underlying_from_deltalake(symbol)
 
-        dt = DeltaTable('data/lake/option_snapshots')
-        df = pl.from_pandas(dt.to_pandas())
-        symbol_df = df.filter(pl.col('symbol') == symbol)
-        strikes = symbol_df.select('strike').unique().sort('strike').get_column('strike').to_list()
-        underlying_price = (min(strikes) + max(strikes)) / 2
+        # Calculate skew ratio
+        skew_ratio = await self._calculate_skew_ratio(symbol, underlying_price, target_dte)
 
-        # Build iron condor
+        # Build iron condor with skew-aware params
         params = {
             'dte': target_dte,
             'put_width': 10,
             'call_width': 10,
             'quantity': quantity,
+            'skew_ratio': skew_ratio,
         }
 
-        return await self.ic_builder.build(symbol, underlying_price, params)
+        strategy = await self.ic_builder.build(symbol, underlying_price, params)
+
+        # Add skew metrics to metadata
+        strategy.metadata['skew_ratio'] = skew_ratio
+        strategy.metadata['skew_interpretation'] = self._interpret_skew(skew_ratio)
+
+        return strategy
 
     async def _build_bull_put_spread(
         self,
@@ -159,25 +178,57 @@ class StrategySelector:
         target_dte: int,
         use_smart_lookup: bool
     ) -> Strategy:
-        """Build Bull Put Spread (vertical spread with BEAR direction = credit put spread)."""
-        import polars as pl
-        from deltalake import DeltaTable
+        """Build Bull Put Spread with skew-aware strike selection."""
+        # Get underlying price from centralized service or fallback to Delta Lake
+        if self.price_service:
+            try:
+                underlying_price = await self.price_service.get_price(symbol)
+            except Exception as e:
+                logger.warning(f"Price service failed for {symbol}: {e}, using Delta Lake fallback")
+                underlying_price = await self._get_underlying_from_deltalake(symbol)
+        else:
+            underlying_price = await self._get_underlying_from_deltalake(symbol)
 
-        dt = DeltaTable('data/lake/option_snapshots')
-        df = pl.from_pandas(dt.to_pandas())
-        symbol_df = df.filter(pl.col('symbol') == symbol)
-        strikes = symbol_df.select('strike').unique().sort('strike').get_column('strike').to_list()
-        underlying_price = (min(strikes) + max(strikes)) / 2
+        # Calculate skew ratio
+        skew_ratio = await self._calculate_skew_ratio(symbol, underlying_price, target_dte)
 
-        # Build bull put spread (vertical spread, BEAR direction = put spread)
+        # Build bull put spread with skew-aware params
         params = {
             'direction': 'BEAR',
             'width': 10,
             'dte': target_dte,
             'quantity': quantity,
+            'skew_ratio': skew_ratio,
         }
 
-        return self.vsb_builder.build(symbol, underlying_price, params)
+        strategy = self.vsb_builder.build(symbol, underlying_price, params)
+
+        # Add skew metrics to metadata
+        strategy.metadata['skew_ratio'] = skew_ratio
+        strategy.metadata['skew_interpretation'] = self._interpret_skew(skew_ratio)
+
+        return strategy
+
+    async def _get_underlying_from_deltalake(self, symbol: str) -> float:
+        """Fallback: estimate underlying price from Delta Lake option snapshots."""
+        import polars as pl
+        from deltalake import DeltaTable
+        from pathlib import Path
+
+        # Use string manipulation to handle the double v6 in the path
+        # __file__ is /home/bigballs/project/bot/v6/src/v6/strategy_builder/strategy_selector.py
+        # Split on '/src/v6/' to get the v6 project root: /home/bigballs/project/bot/v6
+        this_file = Path(__file__)
+        project_root = Path(str(this_file).split('/src/v6/')[0])
+        table_path = project_root / 'data' / 'lake' / 'option_snapshots'
+
+        dt = DeltaTable(str(table_path))
+        df = pl.from_pandas(dt.to_pandas())
+        symbol_df = df.filter(pl.col('symbol') == symbol)
+        strikes = symbol_df.select('strike').unique().sort('strike').get_column('strike').to_list()
+        underlying_price = (min(strikes) + max(strikes)) / 2
+        logger.debug(f"Estimated {symbol} price from Delta Lake: ${underlying_price:.2f}")
+        return underlying_price
 
     async def _build_bear_call_spread(
         self,
@@ -186,17 +237,21 @@ class StrategySelector:
         target_dte: int,
         use_smart_lookup: bool
     ) -> Strategy:
-        """Build Bear Call Spread (credit spread: sell OTM call, buy higher strike call)."""
-        import polars as pl
-        from deltalake import DeltaTable
+        """Build Bear Call Spread with skew-aware strike selection."""
         from v6.strategy_builder.models import LegSpec, OptionRight, LegAction, Strategy, StrategyType
-        from datetime import datetime, date, timedelta
 
-        dt = DeltaTable('data/lake/option_snapshots')
-        df = pl.from_pandas(dt.to_pandas())
-        symbol_df = df.filter(pl.col('symbol') == symbol)
-        strikes = symbol_df.select('strike').unique().sort('strike').get_column('strike').to_list()
-        underlying_price = (min(strikes) + max(strikes)) / 2
+        # Get underlying price from centralized service or fallback to Delta Lake
+        if self.price_service:
+            try:
+                underlying_price = await self.price_service.get_price(symbol)
+            except Exception as e:
+                logger.warning(f"Price service failed for {symbol}: {e}, using Delta Lake fallback")
+                underlying_price = await self._get_underlying_from_deltalake(symbol)
+        else:
+            underlying_price = await self._get_underlying_from_deltalake(symbol)
+
+        # Calculate skew ratio
+        skew_ratio = await self._calculate_skew_ratio(symbol, underlying_price, target_dte)
 
         # Bear call spread: Sell OTM call, buy higher strike call (credit spread)
         width = 10
@@ -241,6 +296,8 @@ class StrategySelector:
                 'underlying_price': underlying_price,
                 'short_strike': short_strike,
                 'long_strike': long_strike,
+                'skew_ratio': skew_ratio,
+                'skew_interpretation': self._interpret_skew(skew_ratio),
             }
         )
 
@@ -480,3 +537,59 @@ class StrategySelector:
         )
 
         return ranked[0] if ranked else None
+
+    async def _calculate_skew_ratio(
+        self,
+        symbol: str,
+        underlying_price: float,
+        target_dte: int
+    ) -> float:
+        """
+        Calculate IV skew ratio (put IV / call IV) for the symbol.
+
+        Args:
+            symbol: Underlying symbol
+            underlying_price: Current underlying price
+            target_dte: Target days to expiration
+
+        Returns:
+            Skew ratio (>1.0 = put skew elevated, <1.0 = call skew elevated)
+        """
+        from v6.strategy_builder.smart_strike_selector import SmartStrikeSelector
+
+        # Initialize option snapshots table
+        snapshots = OptionSnapshotsTable()
+        expiry = date.today() + timedelta(days=target_dte)
+
+        # Create IV lookup function
+        def get_iv_for_skew(strike: float, right: str) -> float:
+            iv = snapshots.get_iv_for_strike(symbol, strike, right, expiry)
+            return iv if iv is not None else 0.20  # Default to 20% if not found
+
+        # Calculate skew using SmartStrikeSelector
+        selector = SmartStrikeSelector(days_to_expiration=target_dte)
+        skew_ratio = selector.calculate_skew_ratio(
+            symbol=symbol,
+            underlying_price=underlying_price,
+            target_dte=target_dte,
+            get_iv_func=get_iv_for_skew,
+        )
+
+        return skew_ratio
+
+    def _interpret_skew(self, skew_ratio: float) -> str:
+        """
+        Interpret skew ratio into human-readable form.
+
+        Args:
+            skew_ratio: IV put/call ratio
+
+        Returns:
+            String interpretation
+        """
+        if skew_ratio > 1.2:
+            return 'high_put_skew'
+        elif skew_ratio < 0.8:
+            return 'high_call_skew'
+        else:
+            return 'neutral'

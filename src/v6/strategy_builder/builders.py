@@ -29,6 +29,7 @@ from v6.strategy_builder.models import (
     LegAction,
 )
 from v6.pybike.ib_wrapper import IBWrapper as OptionDataFetcher
+from v6.strategy_builder.smart_strike_selector import SmartStrikeSelector
 
 
 class StrategyBuilder(Protocol):
@@ -92,11 +93,13 @@ class IronCondorBuilder:
         - dte: Days to expiration (default: 45)
         - delta_target: Target delta for short strikes (default: 16, i.e., 0.16 delta)
         - option_fetcher: Optional OptionDataFetcher to query real expirations from IB
+        - strike_selector: Optional SmartStrikeSelector for skew-aware strike selection
     """
 
     priority: int = 10
     name: str = "IronCondorBuilder"
     option_fetcher: Optional[OptionDataFetcher] = None
+    strike_selector: Optional[SmartStrikeSelector] = None
 
     async def build(
         self,
@@ -123,6 +126,8 @@ class IronCondorBuilder:
         call_width = params.get("call_width", 10)
         dte = params.get("dte", 45)
         delta_target = params.get("delta_target", 0.16)
+        skew_ratio = params.get("skew_ratio", 1.0)
+        underlying_price_param = params.get("underlying_price")
 
         # Validate parameters
         if put_width <= 0:
