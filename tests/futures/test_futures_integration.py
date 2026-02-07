@@ -284,7 +284,7 @@ class TestFuturesSnapshotsTable:
         dt = futures_table.get_table()
         df = pl.from_pandas(dt.to_pandas())
         assert len(df) == 1
-        assert df.row(0)[0] == "ES"  # symbol column
+        assert df["symbol"][0] == "ES"  # symbol column
 
     def test_read_latest_snapshots(self, futures_table, sample_snapshots):
         """Test reading latest snapshots."""
@@ -296,7 +296,7 @@ class TestFuturesSnapshotsTable:
         df = futures_table.read_latest_snapshots(symbol="ES", limit=5)
 
         assert len(df) == 5
-        assert df.row(0)[0] == "ES"
+        assert df["symbol"][0] == "ES"
 
     def test_read_time_range(self, futures_table, sample_snapshot):
         """Test reading snapshots within time range."""
@@ -310,7 +310,7 @@ class TestFuturesSnapshotsTable:
         df = futures_table.read_time_range("ES", start, end)
 
         assert len(df) >= 1
-        assert df.row(0)[0] == "ES"
+        assert df["symbol"][0] == "ES"
 
     def test_get_stats(self, futures_table, sample_snapshot):
         """Test getting table statistics."""
@@ -344,7 +344,7 @@ class TestDeltaLakeFuturesWriter:
         df = pl.from_pandas(dt.to_pandas())
 
         assert len(df) == 1
-        assert df.row(0)[0] == "ES"
+        assert df["symbol"][0] == "ES"
 
     @pytest.mark.asyncio
     async def test_write_multiple_snapshots(self, futures_table, sample_snapshots):
@@ -416,7 +416,7 @@ class TestFuturesDataReader:
         df = reader.read_latest_snapshots(symbol="ES", limit=5)
 
         assert len(df) == 5
-        assert df.row(0)[0] == "ES"
+        assert df["symbol"][0] == "ES"
 
     @pytest.mark.asyncio
     async def test_read_time_range(self, futures_table, sample_snapshot):
@@ -433,7 +433,7 @@ class TestFuturesDataReader:
         df = reader.read_time_range("ES", start, end)
 
         assert len(df) >= 1
-        assert df.row(0)[0] == "ES"
+        assert df["symbol"][0] == "ES"
 
     @pytest.mark.asyncio
     async def test_calculate_correlation(self, futures_table):

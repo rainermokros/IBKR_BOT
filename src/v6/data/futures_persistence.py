@@ -139,11 +139,9 @@ class FuturesSnapshotsTable:
                 pl.col("timestamp").dt.date().alias("date")
             )
 
-        # Deduplicate within batch (keep latest timestamp for same symbol)
-        df_deduped = df.sort("timestamp", descending=True).unique(
-            subset=["symbol"],
-            keep="first"
-        )
+        # No deduplication within batch - each snapshot has unique timestamp
+        # Only deduplicate against existing data in Delta Lake
+        df_deduped = df
 
         # Use anti-join for deduplication against existing data
         try:
