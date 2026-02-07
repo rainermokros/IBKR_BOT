@@ -365,14 +365,47 @@ class EntryWorkflow:
 
         # Step 1.5: Check portfolio limits (if checker provided)
         if self.portfolio_limits:
-            # Calculate position delta (sum of SELL legs)
-            # Note: This is a simplified calculation - actual delta depends on Greeks
-            position_delta = sum(
-                leg.quantity if leg.action == LegAction.SELL else -leg.quantity
-                for leg in strategy.legs
-            )
+            # Calculate position delta using Greeks if available
+            position_delta = 0.0
+            used_greeks = False
 
-            # Calculate position value (rough estimate)
+            # Try to use actual Greeks from strategy metadata
+            if hasattr(strategy, 'metadata') and strategy.metadata:
+                for leg in strategy.legs:
+                    # Look for delta in metadata: leg_PUT_delta, leg_CALL_delta
+                    leg_key = f"leg_{leg.right.value}_delta"
+                    leg_delta = strategy.metadata.get(leg_key, 0.0)
+
+                    if leg_delta != 0.0:
+                        # Use actual Greek delta
+                        used_greeks = True
+                        if leg.action == LegAction.SELL:
+                            # Short options: positive delta for calls, negative for puts
+                            # SELLing a call gives us negative delta (we're short)
+                            # SELLing a put gives us positive delta (we're short)
+                            if leg.right.value == "CALL":
+                                position_delta -= abs(leg_delta) * leg.quantity
+                            else:  # PUT
+                                position_delta += abs(leg_delta) * leg.quantity
+                        else:  # BUY
+                            # BUYing a call gives us positive delta
+                            # BUYing a put gives us negative delta
+                            if leg.right.value == "CALL":
+                                position_delta += abs(leg_delta) * leg.quantity
+                            else:  # PUT
+                                position_delta -= abs(leg_delta) * leg.quantity
+
+            # Fallback to quantity-based if no Greeks available
+            if not used_greeks or position_delta == 0.0:
+                # Simplified calculation: use quantity as delta proxy
+                # SELL legs contribute positively to net delta (for credit spreads)
+                # BUY legs contribute negatively
+                position_delta = sum(
+                    leg.quantity if leg.action == LegAction.SELL else -leg.quantity
+                    for leg in strategy.legs
+                )
+
+            # Calculate position value (max risk estimation)
             # Use strike * quantity * 100 multiplier for options
             position_value = sum(
                 abs(leg.quantity) * leg.strike * 100
@@ -387,16 +420,24 @@ class EntryWorkflow:
             )
 
             if not allowed:
-                self.logger.warning(f"Entry REJECTED by portfolio limits: {reason}")
+                self.logger.warning(
+                    f"Entry REJECTED by portfolio limits: {reason}\n"
+                    f"  Position delta: {position_delta:.2f} ({'using Greeks' if used_greeks else 'quantity-based'})\n"
+                    f"  Position value: ${position_value:,.0f}\n"
+                    f"  Symbol: {strategy.symbol}"
+                )
                 raise PortfolioLimitExceededError(
                     message=f"Portfolio limit exceeded: {reason}",
                     limit_type="portfolio_limits",
-                    current_value=0.0,
+                    current_value=position_delta,
                     limit_value=0.0,
                     symbol=strategy.symbol,
                 )
 
-            self.logger.info("✓ Entry allowed by portfolio limits")
+            self.logger.info(
+                f"✓ Entry allowed by portfolio limits: "
+                f"delta={position_delta:.2f}, value=${position_value:,.0f}"
+            )
 
         # Step 2: Create StrategyExecution
         execution_id = str(uuid4())
