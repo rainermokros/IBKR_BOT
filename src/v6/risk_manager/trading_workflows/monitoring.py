@@ -155,7 +155,7 @@ class PositionMonitoringWorkflow:
             action_counts[action] = action_counts.get(action, 0) + 1
 
         self.logger.info(
-            f"Monitoring cycle complete: {len(decisions) positions, "
+            f"Monitoring cycle complete: {len(decisions)} positions, "
             f"actions={action_counts}"
         )
 
@@ -416,8 +416,10 @@ class PositionMonitoringWorkflow:
         # - Portfolio delta from PortfolioRiskCalculator
 
         market_data = {
+            "symbol": symbol,  # Required for DynamicTakeProfit regime detection
             "vix": 18.0,  # Would fetch from VIX index
             "iv_rank": 50.0,  # Would calculate from IV history
+            "underlying_price": 500.0,  # Required for DynamicTakeProfit regime detection
             "iv_change_percent": 0.0,  # Would calculate from entry IV
             "1h_change": 0.0,  # Would fetch from market data
             "iv_percentile": 0.5,  # Would calculate from IV history

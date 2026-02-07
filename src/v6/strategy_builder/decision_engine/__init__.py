@@ -28,6 +28,7 @@ from v6.strategy_builder.decision_engine.catastrophe import (
 )
 from v6.strategy_builder.decision_engine.protection_rules import (
     DeltaRisk,
+    DynamicTakeProfit,
     IVCrush,
     IVPercentileExit,
     StopLoss,
@@ -43,6 +44,7 @@ __all__ = [
     "TrailingStopLoss",
     "VIXExit",
     "TakeProfit",
+    "DynamicTakeProfit",
     "StopLoss",
     "DeltaRisk",
     "IVCrush",
@@ -59,6 +61,9 @@ def register_all_rules(engine) -> None:
 
     This function registers all decision rules in priority order.
     Rules are automatically sorted by the engine, so order here doesn't matter.
+
+    Uses DynamicTakeProfit (priority 2.1) instead of fixed TakeProfit (priority 2)
+    for regime-aware profit targets. Falls back to fixed TP on errors.
 
     Args:
         engine: DecisionEngine instance to register rules with
@@ -80,20 +85,29 @@ def register_all_rules(engine) -> None:
     )
     from v6.strategy_builder.decision_engine.protection_rules import (
         DeltaRisk,
+        DynamicTakeProfit,
         IVCrush,
         IVPercentileExit,
         StopLoss,
         TakeProfit,
     )
     from v6.strategy_builder.decision_engine.roll_rules import DTERoll, GammaRisk, TimeExit
+    from v6.strategy_builder.decision_engine.enhanced_market_regime import (
+        EnhancedMarketRegimeDetector,
+    )
+
+    # Create regime detector for DynamicTakeProfit
+    regime_detector = EnhancedMarketRegimeDetector()
 
     # Register all 12 rules (priority 1-8)
+    # DynamicTakeProfit (2.1) takes precedence over TakeProfit (2.0)
     rules = [
         CatastropheProtection(),
         SingleLegExit(),
         TrailingStopLoss(),
         VIXExit(),
-        TakeProfit(),
+        DynamicTakeProfit(regime_detector=regime_detector),  # Regime-aware TP
+        TakeProfit(),  # Fallback if DynamicTakeProfit fails
         StopLoss(),
         DeltaRisk(),
         IVCrush(),
